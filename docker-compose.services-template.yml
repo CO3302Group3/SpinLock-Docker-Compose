@@ -1,0 +1,168 @@
+# Template for Future Microservices
+# Add this content under the 'services:' section in your main docker-compose.yml
+
+# Uncomment and modify this template for each of your 8 microservices that will produce Kafka data
+# Note: Updated for KRaft mode (No Zookeeper required)
+
+# Example Microservice Template:
+# Replace 'service-name' with your actual service name (device-telemetry, device-onboarding, etc.)
+
+# service-name:
+#   image: your-registry/service-name:latest
+#   container_name: service-name
+#   environment:
+#     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092  # KRaft mode - no Zookeeper
+#     - KAFKA_TOPIC_PREFIX=spinlock.service-name
+#     - USER_AUTH_SERVICE_URL=http://user-auth-service:8000
+#     - MQTT_BROKER_URL=mqtt://mqtt-broker:1883
+#     - LOG_LEVEL=INFO
+#     - SERVICE_PORT=8000
+#   depends_on:
+#     - kafka  # Only Kafka dependency - no Zookeeper needed
+#     - mqtt-broker
+#     - user-auth-service
+#   networks:
+#     - microservices-network
+#   restart: unless-stopped
+#   healthcheck:
+#     test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+#     interval: 30s
+#     timeout: 10s
+#     retries: 3
+#     start_period: 30s
+#   volumes:
+#     - service_name_data:/app/data  # Add to volumes section below
+
+# Your 8 Microservices (uncomment and configure as needed):
+
+# 1. Device Telemetry Service - Handles IoT device data and publishes to Kafka
+# device-telemetry:
+#   image: rav2001h/device-telemetry:latest
+#   container_name: device-telemetry
+#   environment:
+#     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+#     - KAFKA_TOPIC_PREFIX=spinlock.telemetry
+#     - MQTT_BROKER_URL=mqtt://mqtt-broker:1883
+#     - USER_AUTH_SERVICE_URL=http://user-auth-service:8000
+#     - LOG_LEVEL=INFO
+#   depends_on:
+#     - kafka
+#     - mqtt-broker
+#     - user-auth-service
+#   networks:
+#     - microservices-network
+#   restart: unless-stopped
+#   healthcheck:
+#     test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+#     interval: 30s
+#     timeout: 10s
+#     retries: 3
+
+# 2. Device Onboarding Service - Manages device registration and publishes events to Kafka
+# device-onboarding:
+#   image: rav2001h/device-onboarding:latest
+#   container_name: device-onboarding
+#   environment:
+#     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+#     - KAFKA_TOPIC_PREFIX=spinlock.onboarding
+#     - USER_AUTH_SERVICE_URL=http://user-auth-service:8000
+#   depends_on:
+#     - kafka
+#     - user-auth-service
+#   networks:
+#     - microservices-network
+#   restart: unless-stopped
+
+# 3. GeoLocation Service - Location processing and Kafka event publishing
+# geolocation:
+#   image: rav2001h/geolocation:latest
+#   container_name: geolocation
+#   environment:
+#     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+#     - KAFKA_TOPIC_PREFIX=spinlock.location
+#   depends_on:
+#     - kafka
+#   networks:
+#     - microservices-network
+#   restart: unless-stopped
+
+# 4. Parking Slot Service - Slot management with Kafka events
+# parking-slot:
+#   image: rav2001h/parking-slot:latest
+#   container_name: parking-slot
+#   environment:
+#     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+#     - KAFKA_TOPIC_PREFIX=spinlock.parking
+#   depends_on:
+#     - kafka
+#   networks:
+#     - microservices-network
+#   restart: unless-stopped
+
+# 5. Health Monitoring Service - System health monitoring with Kafka reporting
+# health-monitoring:
+#   image: rav2001h/health-monitoring:latest
+#   container_name: health-monitoring
+#   environment:
+#     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+#     - KAFKA_TOPIC_PREFIX=spinlock.health
+#     - SERVICES_TO_MONITOR=user-auth-service,device-telemetry,geolocation,parking-slot
+#   depends_on:
+#     - kafka
+#   networks:
+#     - microservices-network
+#   restart: unless-stopped
+
+# 6. Alert and Event Processing Service - Processes events and publishes alerts to Kafka
+# alert-event-processing:
+#   image: rav2001h/alert-event-processing:latest
+#   container_name: alert-event-processing
+#   environment:
+#     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+#     - KAFKA_TOPIC_PREFIX=spinlock.alerts
+#     - MQTT_BROKER_URL=mqtt://mqtt-broker:1883
+#   depends_on:
+#     - kafka
+#     - mqtt-broker
+#   networks:
+#     - microservices-network
+#   restart: unless-stopped
+
+# 7. Admin Management Service - Admin operations with audit logging to Kafka
+# admin-management:
+#   image: rav2001h/admin-management:latest
+#   container_name: admin-management
+#   environment:
+#     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+#     - KAFKA_TOPIC_PREFIX=spinlock.admin
+#     - USER_AUTH_SERVICE_URL=http://user-auth-service:8000
+#   depends_on:
+#     - kafka
+#     - user-auth-service
+#   networks:
+#     - microservices-network
+#   restart: unless-stopped
+
+# 8. Notification Service - Handles notifications and publishes delivery status to Kafka
+# notification:
+#   image: rav2001h/notification:latest
+#   container_name: notification
+#   environment:
+#     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+#     - KAFKA_TOPIC_PREFIX=spinlock.notifications
+#   depends_on:
+#     - kafka
+#   networks:
+#     - microservices-network
+#   restart: unless-stopped
+
+# Add additional volumes for your services here:
+# volumes:
+#   device_telemetry_data:
+#   device_onboarding_data:
+#   geolocation_data:
+#   parking_slot_data:
+#   health_monitoring_data:
+#   alert_event_data:
+#   admin_management_data:
+#   notification_data:

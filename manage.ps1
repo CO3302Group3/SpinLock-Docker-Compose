@@ -47,13 +47,15 @@ function Pull-Images {
         # Pull the user authentication microservice from Docker Hub
         docker pull rav2001h/user-auth-microservice:latest
         
+        # Pull Nginx proxy server
+        docker pull nginx:alpine
+        
         # Pull other standard images
         docker pull eclipse-mosquitto:2.0
         docker pull postgres:15-alpine
         docker pull redis:7-alpine
         docker pull portainer/portainer-ce:latest
-        docker pull confluentinc/cp-zookeeper:7.4.0
-        docker pull confluentinc/cp-kafka:7.4.0
+        docker pull confluentinc/cp-kafka:7.6.0  # Latest KRaft-enabled Kafka (no Zookeeper needed)
         docker pull provectuslabs/kafka-ui:latest
         
         Write-Success "All available images pulled successfully!"
@@ -130,16 +132,25 @@ function Show-Status {
     
     Write-Host ""
     Write-Status "Service Health Checks and Access Points:"
-    Write-Host "API Gateway (Main Entry Point): http://localhost:8000" -ForegroundColor Green
+    Write-Host "Nginx Gateway (Main Entry Point):" -ForegroundColor Green
+    Write-Host "  HTTP:  http://localhost" -ForegroundColor Green
+    Write-Host "  HTTPS: https://localhost" -ForegroundColor Green
+    Write-Host "  Health: http://localhost:8080/health" -ForegroundColor Green
+    Write-Host "  Kafka UI: http://localhost/kafka-ui/ or https://localhost/kafka-ui/" -ForegroundColor Green
     Write-Host ""
     Write-Status "Internal Services (Not Externally Accessible):"
-    Write-Host "User Auth Service: Internal only (via API Gateway)" -ForegroundColor Yellow
+    Write-Host "API Gateway: Internal only (api-gateway:8000)" -ForegroundColor Yellow
+    Write-Host "User Auth Service: Internal only (user-auth-service:8000)" -ForegroundColor Yellow
     Write-Host "MQTT Broker: Internal only (mqtt-broker:1883)" -ForegroundColor Yellow
     Write-Host "Kafka Broker: Internal only (kafka:29092)" -ForegroundColor Yellow
     Write-Host "Kafka UI: Internal only (kafka-ui:8080)" -ForegroundColor Yellow
     Write-Host "Zookeeper: Internal only (zookeeper:2181)" -ForegroundColor Yellow
     Write-Host ""
-    Write-Status "Note: All microservices are accessible through the API Gateway at port 8000"
+    Write-Status "Note: All microservices are accessible through Nginx proxy at ports 80 (HTTP) and 443 (HTTPS)"
+    Write-Host ""
+    Write-Status "Infrastructure (KRaft Mode - No Zookeeper):"
+    Write-Host "Kafka Broker: Internal only (kafka:29092) - KRaft enabled" -ForegroundColor Cyan
+    Write-Host "MQTT Broker: Internal only (mqtt-broker:1883) + WebSocket (9001)" -ForegroundColor Cyan
 }
 
 function Build-Images {
@@ -196,38 +207,199 @@ function Reset-All {
     }
 }
 
+function Test-Nginx {
+    Write-Status "Testing Nginx configuration..."
+    
+    try {
+        # Test configuration syntax
+        $result = docker-compose exec nginx nginx -t 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Success "Nginx configuration is valid"
+        } else {
+            Write-Error "Nginx configuration has errors: $result"
+        }
+        
+        # Test HTTP endpoint
+        try {
+            $response = Invoke-WebRequest -Uri "http://localhost:8080/health" -TimeoutSec 5 -UseBasicParsing
+            Write-Success "Nginx health check passed (HTTP $($response.StatusCode))"
+        }
+        catch {
+            Write-Warning "Nginx health check failed: $($_.Exception.Message)"
+        }
+        
+        # Show Nginx status
+        Write-Status "Nginx container status:"
+        docker-compose ps nginx
+    }
+    catch {
+        Write-Error "Failed to test Nginx: $($_.Exception.Message)"
+    }
+}
+
+function Restart-Nginx {
+    Write-Status "Restarting Nginx service..."
+    
+    try {
+        docker-compose restart nginx
+        Write-Success "Nginx restarted successfully!"
+        
+        # Wait a moment and test
+        Start-Sleep -Seconds 5
+        Test-Nginx
+    }
+    catch {
+        Write-Error "Failed to restart Nginx: $($_.Exception.Message)"
+    }
+}
+
 function Show-Help {
-    Write-Host "Microservices Management Script for Windows PowerShell" -ForegroundColor White
+    Write-Status "Microservices Docker Compose Management Script"
     Write-Host ""
-    Write-Host "This script manages a microservices architecture with API Gateway pattern." -ForegroundColor Gray
-    Write-Host "Only the API Gateway (port 8000) is exposed externally for security." -ForegroundColor Gray
+    Write-Host "Usage: .\manage.ps1 [COMMAND] [SERVICE] [ENVIRONMENT]" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "Usage: .\manage.ps1 [command] [service] [environment]" -ForegroundColor White
+    Write-Host "Commands:" -ForegroundColor Green
+    Write-Host "  help          Show this help message" -ForegroundColor Gray
+    Write-Host "  build         Build all services" -ForegroundColor Gray
+    Write-Host "  pull          Pull all Docker images" -ForegroundColor Gray
+    Write-Host "  start         Start all services" -ForegroundColor Gray
+    Write-Host "  start-dev     Start services in development mode" -ForegroundColor Gray
+    Write-Host "  stop          Stop all services" -ForegroundColor Gray
+    Write-Host "  restart       Restart all services" -ForegroundColor Gray
+    Write-Host "  status        Show status of all services" -ForegroundColor Gray
+    Write-Host "  logs          Show logs for all services" -ForegroundColor Gray
+    Write-Host "  clean         Clean up containers and networks" -ForegroundColor Gray
+    Write-Host "  reset         Reset everything (clean + remove volumes)" -ForegroundColor Gray
+    Write-Host "  jwt-secret    Generate a new JWT secret key" -ForegroundColor Gray
+    Write-Host "  ssl-generate  Generate SSL certificates for HTTPS" -ForegroundColor Gray
+    Write-Host "  kafka-cluster-id  Generate new Kafka cluster ID for KRaft" -ForegroundColor Gray
+    Write-Host "  format-kafka  Format Kafka storage for KRaft mode" -ForegroundColor Gray
+    Write-Host "  kafka-cluster-id  Generate a new Kafka Cluster ID" -ForegroundColor Gray
+    Write-Host "  format-kafka  Format Kafka storage with new Cluster ID" -ForegroundColor Gray
     Write-Host ""
-    Write-Host "Commands:" -ForegroundColor White
-    Write-Host "  pull           Pull all Docker images" -ForegroundColor Gray
-    Write-Host "  start          Start services in production mode" -ForegroundColor Gray
-    Write-Host "  start-dev      Start services in development mode" -ForegroundColor Gray
-    Write-Host "  stop           Stop all services" -ForegroundColor Gray
-    Write-Host "  restart        Restart services" -ForegroundColor Gray
-    Write-Host "  logs [service] View logs (optionally for specific service)" -ForegroundColor Gray
-    Write-Host "  status         Show service status and access points" -ForegroundColor Gray
-    Write-Host "  build          Build custom microservice images" -ForegroundColor Gray
-    Write-Host "  jwt-secret     Generate a new JWT secret key" -ForegroundColor Gray
-    Write-Host "  reset          Stop services and remove all volumes" -ForegroundColor Gray
-    Write-Host "  help           Show this help message" -ForegroundColor Gray
+    Write-Host "Examples:" -ForegroundColor Green
+    Write-Host "  .\manage.ps1 start" -ForegroundColor Gray
+    Write-Host "  .\manage.ps1 logs api-gateway" -ForegroundColor Gray
+    Write-Host "  .\manage.ps1 ssl-generate" -ForegroundColor Gray
+    Write-Host "  .\manage.ps1 jwt-secret" -ForegroundColor Gray
     Write-Host ""
-    Write-Host "Examples:" -ForegroundColor White
-    Write-Host "  .\manage.ps1 pull                              # Pull all images" -ForegroundColor Gray
-    Write-Host "  .\manage.ps1 start                             # Start in production mode" -ForegroundColor Gray
-    Write-Host "  .\manage.ps1 start-dev                         # Start in development mode" -ForegroundColor Gray
-    Write-Host "  .\manage.ps1 logs user-auth-service            # View logs for user auth service" -ForegroundColor Gray
-    Write-Host "  .\manage.ps1 status                            # Check service status" -ForegroundColor Gray
+    Write-Host "Services Access:" -ForegroundColor Green
+    Write-Host "• Main API: http://localhost or https://localhost" -ForegroundColor Gray
+    Write-Host "• API Documentation: http://localhost/docs" -ForegroundColor Gray
+    Write-Host "• Kafka UI: http://localhost/kafka-ui/" -ForegroundColor Gray
+    Write-Host "• MQTT WebSocket: ws://localhost/mqtt/" -ForegroundColor Gray
+    Write-Host "• MQTT HTTP API: http://localhost/mqtt-api/" -ForegroundColor Gray
+    Write-Host "• SSL/TLS encryption available via HTTPS (port 443)" -ForegroundColor Gray
+}
+
+function Generate-SSLCertificates {
+    Write-Status "Generating SSL certificates for HTTPS..."
+    
+    # Create SSL directory
+    if (-not (Test-Path "ssl")) {
+        New-Item -ItemType Directory -Path "ssl" -Force
+        Write-Success "Created SSL directory"
+    }
+
+    try {
+        # Try using OpenSSL first
+        $null = Get-Command openssl -ErrorAction Stop
+        Write-Status "Using OpenSSL to generate certificates..."
+        
+        # Generate private key
+        & openssl genrsa -out ssl/nginx.key 2048
+        
+        # Generate certificate signing request and self-signed certificate
+        & openssl req -new -x509 -key ssl/nginx.key -out ssl/nginx.crt -days 365 -subj "/C=US/ST=State/L=City/O=SpinLock/OU=Microservices/CN=localhost"
+        
+        Write-Success "SSL certificates generated successfully!"
+        Write-Host "Certificate: ssl/nginx.crt" -ForegroundColor Cyan
+        Write-Host "Private Key: ssl/nginx.key" -ForegroundColor Cyan
+        
+    } catch {
+        Write-Warning "OpenSSL not found. Using Docker alternative..."
+        
+        try {
+            Write-Status "Generating certificates using Docker..."
+            docker run --rm -v "${PWD}/ssl:/ssl" alpine/openssl genrsa -out /ssl/nginx.key 2048
+            docker run --rm -v "${PWD}/ssl:/ssl" alpine/openssl req -new -x509 -key /ssl/nginx.key -out /ssl/nginx.crt -days 365 -subj "/C=US/ST=State/L=City/O=SpinLock/OU=Microservices/CN=localhost"
+            
+            Write-Success "SSL certificates generated using Docker!"
+            Write-Host "Certificate: ssl/nginx.crt" -ForegroundColor Cyan
+            Write-Host "Private Key: ssl/nginx.key" -ForegroundColor Cyan
+            
+        } catch {
+            Write-Error "Failed to generate SSL certificates. Please install OpenSSL or ensure Docker is running."
+            Write-Host "Manual installation options:" -ForegroundColor Yellow
+            Write-Host "1. Install OpenSSL: choco install openssl" -ForegroundColor Gray
+            Write-Host "2. Use WSL: wsl -e openssl ..." -ForegroundColor Gray
+            return $false
+        }
+    }
+    
+    return $true
+}
+
+function Clean-Services {
+    Write-Status "Cleaning up containers and networks..."
+    
+    try {
+        docker-compose down --remove-orphans
+        docker system prune -f --volumes
+        Write-Success "Cleanup completed!"
+    }
+    catch {
+        Write-Error "Failed to clean services: $($_.Exception.Message)"
+    }
+}
+
+function Generate-KafkaClusterID {
+    Write-Status "Generating new Kafka Cluster ID for KRaft mode..."
+    
+    # Generate a proper Base64 UUID for Kafka KRaft cluster ID
+    $guid = [System.Guid]::NewGuid()
+    $bytes = $guid.ToByteArray()
+    $clusterId = [System.Convert]::ToBase64String($bytes).Replace('+', '-').Replace('/', '_').Substring(0, 22)
+    
+    Write-Host "Generated Kafka Cluster ID: $clusterId" -ForegroundColor Green
+    Write-Warning "Update your docker-compose.yml with this cluster ID:"
+    Write-Host "CLUSTER_ID: '$clusterId'" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "Architecture Notes:" -ForegroundColor White
-    Write-Host "• API Gateway (port 8000) is the single entry point" -ForegroundColor Gray
-    Write-Host "• All microservices communicate internally via Docker network" -ForegroundColor Gray
-    Write-Host "• MQTT, Kafka, and other infrastructure services are internal only" -ForegroundColor Gray
+    Write-Status "Or you can use the kafka-storage tool to format the log directories:"
+    Write-Host "docker run --rm -v kafka_data:/var/lib/kafka/data confluentinc/cp-kafka:7.6.0 kafka-storage format -t $clusterId -c /etc/kafka/server.properties" -ForegroundColor Yellow
+    
+    return $clusterId
+}
+
+function Format-KafkaStorage {
+    Write-Status "Formatting Kafka storage for KRaft mode..."
+    Write-Warning "This will clear all existing Kafka data!"
+    
+    $response = Read-Host "Continue with formatting? (y/N)"
+    if ($response -match "^[Yy]$") {
+        try {
+            # Generate cluster ID
+            $clusterId = Generate-KafkaClusterID
+            
+            Write-Status "Stopping Kafka if running..."
+            docker-compose stop kafka 2>$null
+            
+            Write-Status "Removing existing Kafka data volume..."
+            docker volume rm spinlock-docker-compose_kafka_data 2>$null
+            
+            Write-Status "Creating and formatting new Kafka storage..."
+            docker run --rm -v kafka_data:/var/lib/kafka/data confluentinc/cp-kafka:7.6.0 `
+                kafka-storage format -t $clusterId -c /etc/kafka/server.properties
+            
+            Write-Success "Kafka storage formatted successfully!"
+            Write-Status "You can now start Kafka with: .\manage.ps1 start"
+            
+        } catch {
+            Write-Error "Failed to format Kafka storage: $($_.Exception.Message)"
+        }
+    } else {
+        Write-Status "Kafka storage formatting cancelled"
+    }
 }
 
 # Main script logic
@@ -257,11 +429,29 @@ switch ($Command.ToLower()) {
     "build" {
         Build-Images
     }
+    "test-nginx" {
+        Test-Nginx
+    }
+    "restart-nginx" {
+        Restart-Nginx
+    }
     "jwt-secret" {
         New-JwtSecret
     }
+    "clean" {
+        Clean-Services
+    }
     "reset" {
         Reset-All
+    }
+    "ssl-generate" {
+        Generate-SSLCertificates
+    }
+    "kafka-cluster-id" {
+        Generate-KafkaClusterID
+    }
+    "format-kafka" {
+        Format-KafkaStorage
     }
     default {
         Show-Help

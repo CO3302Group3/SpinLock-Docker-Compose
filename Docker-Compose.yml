@@ -1,6 +1,29 @@
-version: '3.8'
-
 services:
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-gateway
+    ports:
+      - "80:80"      # HTTP
+      - "443:443"    # HTTPS
+      - "8080:8080"  # Internal health checks and status
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - api-gateway
+      - kafka-ui
+    networks:
+      - microservices-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   # User Authentication Microservice (from Docker Hub)
   user-auth-service:
     image: rav2001h/user-auth-microservice:latest
@@ -11,7 +34,7 @@ services:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=${DATABASE_URL:-sqlite:///./users.db}
-      - JWT_SECRET=${JWT_SECRET_KEY:-your-super-secret-jwt-key-change-in-production}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-super-secret-jwt-key-change-in-production}
       - DEBUG=${DEBUG:-false}
     volumes:
       - user_auth_data:/app/data
@@ -29,8 +52,8 @@ services:
   api-gateway:
     image: rav2001h/spinlock-api-gateway:latest
     container_name: spinlock-api-gateway
-    ports:
-      - "8000:8000"
+    # ports:
+    #   - "8000:8000"  # Removed external port exposure - only accessible through Nginx
     environment:
       - USER_AUTH_SERVICE_URL=${USER_AUTH_SERVICE_URL:-http://user-auth-service:8000}
       - GATEWAY_PORT=${GATEWAY_PORT:-8000}
@@ -163,9 +186,11 @@ services:
   mqtt-broker:
     image: eclipse-mosquitto:2.0
     container_name: mqtt-broker
+    # Enable internal access for HTTP/WebSocket through Nginx
     # ports:
-    #   - "1883:1883"  # Removed external port exposure - only accessible internally
-    #   - "9001:9001"  # Removed external port exposure - only accessible internally
+    #   - "1883:1883"  # MQTT port - accessible only internally
+    #   - "9001:9001"  # WebSocket port - accessible through Nginx at /mqtt/
+    #   - "8080:8080"  # HTTP API port - accessible through Nginx at /mqtt-api/
     volumes:
       - mqtt_data:/mosquitto/data
       - mqtt_logs:/mosquitto/log
@@ -173,67 +198,78 @@ services:
     networks:
       - microservices-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/broker/uptime", "-C", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # Zookeeper (required for Kafka)
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.4.0
-    container_name: zookeeper
-    # ports:
-    #   - "2181:2181"  # Removed external port exposure - only accessible internally
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-      ZOOKEEPER_SYNC_LIMIT: 2
-    volumes:
-      - zookeeper_data:/var/lib/zookeeper/data
-      - zookeeper_logs:/var/lib/zookeeper/log
-    networks:
-      - microservices-network
-    restart: unless-stopped
-
-  # Kafka Message Broker
+  # Kafka Message Broker (KRaft Mode - No Zookeeper Required)
   kafka:
-    image: confluentinc/cp-kafka:7.4.0
+    image: confluentinc/cp-kafka:7.6.0  # Latest version supporting KRaft
     container_name: kafka
     # ports:
     #   - "9092:9092"  # Removed external port exposure - only accessible internally
-    #   - "9093:9093"  # Removed external port exposure - only accessible internally
     environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      # KRaft Configuration (Kafka Raft - No Zookeeper)
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      KAFKA_LISTENERS: 'INTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,EXTERNAL://0.0.0.0:9092'
+      KAFKA_ADVERTISED_LISTENERS: 'INTERNAL://kafka:29092,EXTERNAL://localhost:9092'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'INTERNAL'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      
+      # Cluster ID - Generated with proper format for KRaft
+      CLUSTER_ID: 'AndsiAcrn06ldNdTf9QLrg'  # Base64 UUID format required by KRaft
+      
+      # Topic and Cluster Configuration
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
       KAFKA_DELETE_TOPIC_ENABLE: true
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      
+      # Log and Data Configuration
+      KAFKA_LOG_DIRS: '/var/lib/kafka/data'
+      
+      # Performance Tuning
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168  # 7 days
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824  # 1GB
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 300000  # 5 minutes
+      
+      # KRaft Specific Settings
+      KAFKA_METADATA_LOG_SEGMENT_MS: 15000
+      KAFKA_METADATA_MAX_RETENTION_MS: 86400000
+      KAFKA_LOG_CLEANUP_POLICY: 'delete'
+      KAFKA_LOG_RETENTION_BYTES: 1073741824
     volumes:
       - kafka_data:/var/lib/kafka/data
-    depends_on:
-      - zookeeper
     networks:
       - microservices-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:29092 | grep -q 'Produce'"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 60s
+      retries: 5
+      start_period: 90s
 
   # Kafka UI (for monitoring and management)
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
-    ports:
-      - "8080:8080"  # Removed external port exposure - only accessible internally
+    # ports:
+    #   - "8080:8080"  # Removed external port exposure - accessible through Nginx at /kafka-ui/
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+      # Removed Zookeeper configuration since we're using KRaft
+      KAFKA_CLUSTERS_0_PROPERTIES_SECURITY_PROTOCOL: PLAINTEXT
     depends_on:
       - kafka
     networks:
@@ -250,6 +286,8 @@ networks:
 
 # Volumes
 volumes:
+  nginx_logs:
+    driver: local
   user_auth_data:
     driver: local
   logs_data:
@@ -257,10 +295,6 @@ volumes:
   mqtt_data:
     driver: local
   mqtt_logs:
-    driver: local
-  zookeeper_data:
-    driver: local
-  zookeeper_logs:
     driver: local
   kafka_data:
     driver: local
