@@ -1,0 +1,265 @@
+version: '3.8'
+
+services:
+  # User Authentication Microservice (from Docker Hub)
+  user-auth-service:
+    image: rav2001h/user-auth-microservice:latest
+    container_name: user-auth-microservice
+    ports:
+      - "8001:8000"
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///./users.db}
+      - JWT_SECRET=${JWT_SECRET_KEY:-your-super-secret-jwt-key-change-in-production}
+      - DEBUG=${DEBUG:-false}
+    volumes:
+      - user_auth_data:/app/data
+    networks:
+      - microservices-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # API Gateway
+  api-gateway:
+    image: rav2001h/spinlock-api-gateway:latest
+    container_name: spinlock-api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - USER_AUTH_SERVICE_URL=${USER_AUTH_SERVICE_URL:-http://user-auth-service:8000}
+      - GATEWAY_PORT=${GATEWAY_PORT:-8000}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      - user-auth-service
+    networks:
+      - microservices-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Device Telemetry Service
+  device-telemetry:
+    image: device-telemetry:latest
+    container_name: device-telemetry
+    ports:
+      - "8002:8000"
+    environment:
+      - MQTT_BROKER_URL=mqtt://mqtt-broker:1883
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+    depends_on:
+      - mqtt-broker
+      - kafka
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Device Onboarding Service
+  device-onboarding:
+    image: device-onboarding:latest
+    container_name: device-onboarding
+    ports:
+      - "8003:8000"
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # GeoLocation Service
+  geolocation:
+    image: geolocation:latest
+    container_name: geolocation
+    ports:
+      - "8004:8000"
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Parking Slot Service
+  parking-slot:
+    image: parking-slot:latest
+    container_name: parking-slot
+    ports:
+      - "8005:8000"
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Health Monitoring Service
+  health-monitoring:
+    image: health-monitoring:latest
+    container_name: health-monitoring
+    ports:
+      - "8006:8000"
+    environment:
+      - SERVICES_TO_MONITOR=user-auth-service,device-telemetry,geolocation,parking-slot
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Alert and Event Processing Service
+  alert-event-processing:
+    image: alert-event-processing:latest
+    container_name: alert-event-processing
+    ports:
+      - "8007:8000"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+    depends_on:
+      - mqtt-broker
+      - kafka
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Admin Management Service
+  admin-management:
+    image: admin-management:latest
+    container_name: admin-management
+    ports:
+      - "8008:8000"
+    depends_on:
+      - user-auth-service
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Notification Service
+  notification:
+    image: notification:latest
+    container_name: notification
+    ports:
+      - "8009:8000"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+    depends_on:
+      - kafka
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Logging Service
+  logging:
+    image: logging:latest
+    container_name: logging
+    ports:
+      - "8010:8000"
+    volumes:
+      - logs_data:/app/logs
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # MQTT Broker
+  mqtt-broker:
+    image: eclipse-mosquitto:2.0
+    container_name: mqtt-broker
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - mqtt_data:/mosquitto/data
+      - mqtt_logs:/mosquitto/log
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Zookeeper (required for Kafka)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SYNC_LIMIT: 2
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Kafka Message Broker
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
+      KAFKA_DELETE_TOPIC_ENABLE: true
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    depends_on:
+      - zookeeper
+    networks:
+      - microservices-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Kafka UI (for monitoring and management)
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    depends_on:
+      - kafka
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+# Networks
+networks:
+  microservices-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Volumes
+volumes:
+  user_auth_data:
+    driver: local
+  logs_data:
+    driver: local
+  mqtt_data:
+    driver: local
+  mqtt_logs:
+    driver: local
+  zookeeper_data:
+    driver: local
+  zookeeper_logs:
+    driver: local
+  kafka_data:
+    driver: local
