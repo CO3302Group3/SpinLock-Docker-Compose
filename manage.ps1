@@ -41,6 +41,9 @@ function Pull-Images {
     Write-Status "Pulling Docker images..."
     
     try {
+        # Pull the API Gateway image
+        docker pull rav2001h/spinlock-api-gateway:latest
+        
         # Pull the user authentication microservice from Docker Hub
         docker pull rav2001h/user-auth-microservice:latest
         
@@ -92,42 +95,6 @@ function Start-Services {
     }
 }
 
-function Start-SpecificServices {
-    param(
-        [string[]]$ServiceNames,
-        [string]$EnvType = "production"
-    )
-    
-    Write-Status "Starting specific services: $($ServiceNames -join ', ') in $EnvType mode..."
-    
-    # Check if .env file exists, if not create from example
-    if (-not (Test-Path ".env")) {
-        if (Test-Path ".env.example") {
-            Write-Warning ".env file not found, creating from .env.example"
-            Copy-Item ".env.example" ".env"
-            Write-Status "Please review and update the .env file with your configuration"
-        }
-    }
-    
-    try {
-        $serviceArgs = $ServiceNames -join " "
-        
-        if ($EnvType -eq "development") {
-            docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d $serviceArgs
-        } else {
-            docker-compose up -d $serviceArgs
-        }
-        
-        Write-Success "Specific services started successfully!"
-        Write-Status "Checking service health..."
-        Start-Sleep -Seconds 10
-        docker-compose ps
-    }
-    catch {
-        Write-Error "Failed to start specific services: $($_.Exception.Message)"
-    }
-}
-
 function Stop-Services {
     Write-Status "Stopping all services..."
     
@@ -162,14 +129,17 @@ function Show-Status {
     docker-compose ps
     
     Write-Host ""
-    Write-Status "Service Health Checks:"
-    Write-Host "User Auth Service: http://localhost:8001/health" -ForegroundColor White
-    Write-Host "API Gateway: http://localhost:8000" -ForegroundColor White
-    Write-Host "MQTT Broker: mqtt://localhost:1883" -ForegroundColor White
-    Write-Host "Kafka Broker: localhost:9092" -ForegroundColor White
-    Write-Host "Kafka UI: http://localhost:8080" -ForegroundColor White
-    Write-Host "Zookeeper: localhost:2181" -ForegroundColor White
-    Write-Host "Portainer (dev): http://localhost:9000" -ForegroundColor White
+    Write-Status "Service Health Checks and Access Points:"
+    Write-Host "API Gateway (Main Entry Point): http://localhost:8000" -ForegroundColor Green
+    Write-Host ""
+    Write-Status "Internal Services (Not Externally Accessible):"
+    Write-Host "User Auth Service: Internal only (via API Gateway)" -ForegroundColor Yellow
+    Write-Host "MQTT Broker: Internal only (mqtt-broker:1883)" -ForegroundColor Yellow
+    Write-Host "Kafka Broker: Internal only (kafka:29092)" -ForegroundColor Yellow
+    Write-Host "Kafka UI: Internal only (kafka-ui:8080)" -ForegroundColor Yellow
+    Write-Host "Zookeeper: Internal only (zookeeper:2181)" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Status "Note: All microservices are accessible through the API Gateway at port 8000"
 }
 
 function Build-Images {
@@ -229,17 +199,19 @@ function Reset-All {
 function Show-Help {
     Write-Host "Microservices Management Script for Windows PowerShell" -ForegroundColor White
     Write-Host ""
+    Write-Host "This script manages a microservices architecture with API Gateway pattern." -ForegroundColor Gray
+    Write-Host "Only the API Gateway (port 8000) is exposed externally for security." -ForegroundColor Gray
+    Write-Host ""
     Write-Host "Usage: .\manage.ps1 [command] [service] [environment]" -ForegroundColor White
     Write-Host ""
     Write-Host "Commands:" -ForegroundColor White
     Write-Host "  pull           Pull all Docker images" -ForegroundColor Gray
     Write-Host "  start          Start services in production mode" -ForegroundColor Gray
     Write-Host "  start-dev      Start services in development mode" -ForegroundColor Gray
-    Write-Host "  start-minimal  Start only gateway and user auth services" -ForegroundColor Gray
     Write-Host "  stop           Stop all services" -ForegroundColor Gray
     Write-Host "  restart        Restart services" -ForegroundColor Gray
     Write-Host "  logs [service] View logs (optionally for specific service)" -ForegroundColor Gray
-    Write-Host "  status         Show service status and health endpoints" -ForegroundColor Gray
+    Write-Host "  status         Show service status and access points" -ForegroundColor Gray
     Write-Host "  build          Build custom microservice images" -ForegroundColor Gray
     Write-Host "  jwt-secret     Generate a new JWT secret key" -ForegroundColor Gray
     Write-Host "  reset          Stop services and remove all volumes" -ForegroundColor Gray
@@ -251,6 +223,11 @@ function Show-Help {
     Write-Host "  .\manage.ps1 start-dev                         # Start in development mode" -ForegroundColor Gray
     Write-Host "  .\manage.ps1 logs user-auth-service            # View logs for user auth service" -ForegroundColor Gray
     Write-Host "  .\manage.ps1 status                            # Check service status" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "Architecture Notes:" -ForegroundColor White
+    Write-Host "• API Gateway (port 8000) is the single entry point" -ForegroundColor Gray
+    Write-Host "• All microservices communicate internally via Docker network" -ForegroundColor Gray
+    Write-Host "• MQTT, Kafka, and other infrastructure services are internal only" -ForegroundColor Gray
 }
 
 # Main script logic
@@ -263,9 +240,6 @@ switch ($Command.ToLower()) {
     }
     "start-dev" {
         Start-Services "development"
-    }
-    "start-minimal" {
-        Start-SpecificServices @("api-gateway", "user-auth-service") $Environment
     }
     "stop" {
         Stop-Services

@@ -32,6 +32,9 @@ print_error() {
 pull_images() {
     print_status "Pulling Docker images..."
     
+    # Pull the API Gateway image
+    docker pull rav2001h/spinlock-api-gateway:latest
+    
     # Pull the user authentication microservice from Docker Hub
     docker pull rav2001h/user-auth-microservice:latest
     
@@ -88,11 +91,17 @@ show_status() {
     print_status "Service Status:"
     docker-compose ps
     
-    print_status "\nService Health Checks:"
-    echo "User Auth Service: http://localhost:8001/health"
-    echo "API Gateway: http://localhost:8000"
-    echo "MQTT Broker: mqtt://localhost:1883"
-    echo "Portainer (dev): http://localhost:9000"
+    print_status "\nService Health Checks and Access Points:"
+    echo "API Gateway (Main Entry Point): http://localhost:8000"
+    echo ""
+    print_status "Internal Services (Not Externally Accessible):"
+    echo "User Auth Service: Internal only (via API Gateway)"
+    echo "MQTT Broker: Internal only (mqtt-broker:1883)"
+    echo "Kafka Broker: Internal only (kafka:29092)"
+    echo "Kafka UI: Internal only (kafka-ui:8080)"
+    echo "Zookeeper: Internal only (zookeeper:2181)"
+    echo ""
+    print_status "Note: All microservices are accessible through the API Gateway at port 8000"
 }
 
 # Function to build custom images
@@ -152,6 +161,9 @@ case "${1:-help}" in
     "help"|*)
         echo "Microservices Management Script"
         echo ""
+        echo "This script manages a microservices architecture with API Gateway pattern."
+        echo "Only the API Gateway (port 8000) is exposed externally for security."
+        echo ""
         echo "Usage: $0 [command] [options]"
         echo ""
         echo "Commands:"
@@ -161,7 +173,7 @@ case "${1:-help}" in
         echo "  stop           Stop all services"
         echo "  restart        Restart services"
         echo "  logs [service] View logs (optionally for specific service)"
-        echo "  status         Show service status and health endpoints"
+        echo "  status         Show service status and access points"
         echo "  build          Build custom microservice images"
         echo "  reset          Stop services and remove all volumes"
         echo "  help           Show this help message"
@@ -172,5 +184,10 @@ case "${1:-help}" in
         echo "  $0 start-dev               # Start in development mode"
         echo "  $0 logs user-auth-service  # View logs for user auth service"
         echo "  $0 status                  # Check service status"
+        echo ""
+        echo "Architecture Notes:"
+        echo "• API Gateway (port 8000) is the single entry point"
+        echo "• All microservices communicate internally via Docker network"
+        echo "• MQTT, Kafka, and other infrastructure services are internal only"
         ;;
 esac
