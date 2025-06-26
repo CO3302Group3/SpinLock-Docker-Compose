@@ -92,6 +92,42 @@ function Start-Services {
     }
 }
 
+function Start-SpecificServices {
+    param(
+        [string[]]$ServiceNames,
+        [string]$EnvType = "production"
+    )
+    
+    Write-Status "Starting specific services: $($ServiceNames -join ', ') in $EnvType mode..."
+    
+    # Check if .env file exists, if not create from example
+    if (-not (Test-Path ".env")) {
+        if (Test-Path ".env.example") {
+            Write-Warning ".env file not found, creating from .env.example"
+            Copy-Item ".env.example" ".env"
+            Write-Status "Please review and update the .env file with your configuration"
+        }
+    }
+    
+    try {
+        $serviceArgs = $ServiceNames -join " "
+        
+        if ($EnvType -eq "development") {
+            docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d $serviceArgs
+        } else {
+            docker-compose up -d $serviceArgs
+        }
+        
+        Write-Success "Specific services started successfully!"
+        Write-Status "Checking service health..."
+        Start-Sleep -Seconds 10
+        docker-compose ps
+    }
+    catch {
+        Write-Error "Failed to start specific services: $($_.Exception.Message)"
+    }
+}
+
 function Stop-Services {
     Write-Status "Stopping all services..."
     
@@ -199,6 +235,7 @@ function Show-Help {
     Write-Host "  pull           Pull all Docker images" -ForegroundColor Gray
     Write-Host "  start          Start services in production mode" -ForegroundColor Gray
     Write-Host "  start-dev      Start services in development mode" -ForegroundColor Gray
+    Write-Host "  start-minimal  Start only gateway and user auth services" -ForegroundColor Gray
     Write-Host "  stop           Stop all services" -ForegroundColor Gray
     Write-Host "  restart        Restart services" -ForegroundColor Gray
     Write-Host "  logs [service] View logs (optionally for specific service)" -ForegroundColor Gray
@@ -226,6 +263,9 @@ switch ($Command.ToLower()) {
     }
     "start-dev" {
         Start-Services "development"
+    }
+    "start-minimal" {
+        Start-SpecificServices @("api-gateway", "user-auth-service") $Environment
     }
     "stop" {
         Stop-Services
