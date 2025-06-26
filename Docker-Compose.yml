@@ -46,117 +46,118 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+  
+  # # Device Telemetry Service
+  # device-telemetry:
+  #   image: device-telemetry:latest
+  #   container_name: device-telemetry
+  #   ports:
+  #     - "8002:8000"
+  #   environment:
+  #     - MQTT_BROKER_URL=mqtt://mqtt-broker:1883
+  #     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+  #   depends_on:
+  #     - mqtt-broker
+  #     - kafka
+  #   networks:
+  #     - microservices-network
+  #   restart: unless-stopped
 
-  # Device Telemetry Service
-  device-telemetry:
-    image: device-telemetry:latest
-    container_name: device-telemetry
-    ports:
-      - "8002:8000"
-    environment:
-      - MQTT_BROKER_URL=mqtt://mqtt-broker:1883
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-    depends_on:
-      - mqtt-broker
-      - kafka
-    networks:
-      - microservices-network
-    restart: unless-stopped
+  # # Device Onboarding Service
+  # device-onboarding:
+  #   image: device-onboarding:latest
+  #   container_name: device-onboarding
+  #   ports:
+  #     - "8003:8000"
+  #   networks:
+  #     - microservices-network
+  #   restart: unless-stopped
 
-  # Device Onboarding Service
-  device-onboarding:
-    image: device-onboarding:latest
-    container_name: device-onboarding
-    ports:
-      - "8003:8000"
-    networks:
-      - microservices-network
-    restart: unless-stopped
+  # # GeoLocation Service
+  # geolocation:
+  #   image: geolocation:latest
+  #   container_name: geolocation
+  #   ports:
+  #     - "8004:8000"
+  #   networks:
+  #     - microservices-network
+  #   restart: unless-stopped
 
-  # GeoLocation Service
-  geolocation:
-    image: geolocation:latest
-    container_name: geolocation
-    ports:
-      - "8004:8000"
-    networks:
-      - microservices-network
-    restart: unless-stopped
+  # # Parking Slot Service
+  # parking-slot:
+  #   image: parking-slot:latest
+  #   container_name: parking-slot
+  #   ports:
+  #     - "8005:8000"
+  #   networks:
+  #     - microservices-network
+  #   restart: unless-stopped
 
-  # Parking Slot Service
-  parking-slot:
-    image: parking-slot:latest
-    container_name: parking-slot
-    ports:
-      - "8005:8000"
-    networks:
-      - microservices-network
-    restart: unless-stopped
+  # # Health Monitoring Service
+  # health-monitoring:
+  #   image: health-monitoring:latest
+  #   container_name: health-monitoring
+  #   ports:
+  #     - "8006:8000"
+  #   environment:
+  #     - SERVICES_TO_MONITOR=user-auth-service,device-telemetry,geolocation,parking-slot
+  #   networks:
+  #     - microservices-network
+  #   restart: unless-stopped
 
-  # Health Monitoring Service
-  health-monitoring:
-    image: health-monitoring:latest
-    container_name: health-monitoring
-    ports:
-      - "8006:8000"
-    environment:
-      - SERVICES_TO_MONITOR=user-auth-service,device-telemetry,geolocation,parking-slot
-    networks:
-      - microservices-network
-    restart: unless-stopped
+  # # Alert and Event Processing Service
+  # alert-event-processing:
+  #   image: alert-event-processing:latest
+  #   container_name: alert-event-processing
+  #   ports:
+  #     - "8007:8000"
+  #   environment:
+  #     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+  #   depends_on:
+  #     - mqtt-broker
+  #     - kafka
+  #   networks:
+  #     - microservices-network
+  #   restart: unless-stopped
 
-  # Alert and Event Processing Service
-  alert-event-processing:
-    image: alert-event-processing:latest
-    container_name: alert-event-processing
-    ports:
-      - "8007:8000"
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-    depends_on:
-      - mqtt-broker
-      - kafka
-    networks:
-      - microservices-network
-    restart: unless-stopped
+  # # Admin Management Service
+  # admin-management:
+  #   image: admin-management:latest
+  #   container_name: admin-management
+  #   ports:
+  #     - "8008:8000"
+  #   depends_on:
+  #     - user-auth-service
+  #   networks:
+  #     - microservices-network
+  #   restart: unless-stopped
 
-  # Admin Management Service
-  admin-management:
-    image: admin-management:latest
-    container_name: admin-management
-    ports:
-      - "8008:8000"
-    depends_on:
-      - user-auth-service
-    networks:
-      - microservices-network
-    restart: unless-stopped
+  # # Notification Service
+  # notification:
+  #   image: notification:latest
+  #   container_name: notification
+  #   ports:
+  #     - "8009:8000"
+  #   environment:
+  #     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+  #   depends_on:
+  #     - kafka
+  #   networks:
+  #     - microservices-network
+  #   restart: unless-stopped
 
-  # Notification Service
-  notification:
-    image: notification:latest
-    container_name: notification
-    ports:
-      - "8009:8000"
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-    depends_on:
-      - kafka
-    networks:
-      - microservices-network
-    restart: unless-stopped
-
-  # Logging Service
-  logging:
-    image: logging:latest
-    container_name: logging
-    ports:
-      - "8010:8000"
-    volumes:
-      - logs_data:/app/logs
-    networks:
-      - microservices-network
-    restart: unless-stopped
+  # # Logging Service
+  # logging:
+  #   image: logging:latest
+  #   container_name: logging
+  #   ports:
+  #     - "8010:8000"
+  #   volumes:
+  #     - logs_data:/app/logs
+  #   networks:
+  #     - microservices-network
+  #   restart: unless-stopped
+  
 
   # MQTT Broker
   mqtt-broker:
