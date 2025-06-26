@@ -5,8 +5,8 @@ services:
   user-auth-service:
     image: rav2001h/user-auth-microservice:latest
     container_name: user-auth-microservice
-    ports:
-      - "8001:8000"
+    # ports:
+    #   - "8001:8000"  # Removed external port exposure - only accessible through API Gateway
     environment:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
@@ -163,9 +163,9 @@ services:
   mqtt-broker:
     image: eclipse-mosquitto:2.0
     container_name: mqtt-broker
-    ports:
-      - "1883:1883"
-      - "9001:9001"
+    # ports:
+    #   - "1883:1883"  # Removed external port exposure - only accessible internally
+    #   - "9001:9001"  # Removed external port exposure - only accessible internally
     volumes:
       - mqtt_data:/mosquitto/data
       - mqtt_logs:/mosquitto/log
@@ -178,8 +178,8 @@ services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
     container_name: zookeeper
-    ports:
-      - "2181:2181"
+    # ports:
+    #   - "2181:2181"  # Removed external port exposure - only accessible internally
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -195,9 +195,9 @@ services:
   kafka:
     image: confluentinc/cp-kafka:7.4.0
     container_name: kafka
-    ports:
-      - "9092:9092"
-      - "9093:9093"
+    # ports:
+    #   - "9092:9092"  # Removed external port exposure - only accessible internally
+    #   - "9093:9093"  # Removed external port exposure - only accessible internally
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -229,7 +229,7 @@ services:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
     ports:
-      - "8080:8080"
+      - "8080:8080"  # Removed external port exposure - only accessible internally
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
