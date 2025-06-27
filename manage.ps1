@@ -136,17 +136,18 @@ function Show-Status {
     Write-Host "  HTTP:  http://localhost" -ForegroundColor Green
     Write-Host "  HTTPS: https://localhost" -ForegroundColor Green
     Write-Host "  Health: http://localhost:8080/health" -ForegroundColor Green
-    Write-Host "  Kafka UI: http://localhost/kafka-ui/ or https://localhost/kafka-ui/" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Direct Service Access:" -ForegroundColor Green
+    Write-Host "  Kafka UI: http://localhost:8001" -ForegroundColor Green
     Write-Host ""
     Write-Status "Internal Services (Not Externally Accessible):"
     Write-Host "API Gateway: Internal only (api-gateway:8000)" -ForegroundColor Yellow
     Write-Host "User Auth Service: Internal only (user-auth-service:8000)" -ForegroundColor Yellow
     Write-Host "MQTT Broker: Internal only (mqtt-broker:1883)" -ForegroundColor Yellow
+    Write-Host "MQTT WebSocket: Available through nginx at /mqtt/" -ForegroundColor Yellow
     Write-Host "Kafka Broker: Internal only (kafka:29092)" -ForegroundColor Yellow
-    Write-Host "Kafka UI: Internal only (kafka-ui:8080)" -ForegroundColor Yellow
-    Write-Host "Zookeeper: Internal only (zookeeper:2181)" -ForegroundColor Yellow
     Write-Host ""
-    Write-Status "Note: All microservices are accessible through Nginx proxy at ports 80 (HTTP) and 443 (HTTPS)"
+    Write-Status "Note: All API requests go through Nginx Gateway which routes to API Gateway"
     Write-Host ""
     Write-Status "Infrastructure (KRaft Mode - No Zookeeper):"
     Write-Host "Kafka Broker: Internal only (kafka:29092) - KRaft enabled" -ForegroundColor Cyan
@@ -205,6 +206,58 @@ function Reset-All {
     } else {
         Write-Status "Reset cancelled"
     }
+}
+
+function Test-AllServices {
+    Write-Status "Testing all available services..."
+    
+    # Test Nginx Gateway
+    Write-Status "Testing Nginx Gateway (HTTP)..."
+    try {
+        $response = Invoke-RestMethod -Uri "http://localhost:8080/health" -Method GET -TimeoutSec 10
+        Write-Success "[OK] Nginx health check passed"
+    }
+    catch {
+        Write-Error "[FAIL] Nginx health check failed: $($_.Exception.Message)"
+    }
+    
+    # Test API Gateway through Nginx
+    Write-Status "Testing API Gateway through Nginx..."
+    try {
+        $response = Invoke-RestMethod -Uri "http://localhost/health" -Method GET -TimeoutSec 10
+        Write-Success "[OK] API Gateway health check passed"
+    }
+    catch {
+        Write-Error "[FAIL] API Gateway health check failed: $($_.Exception.Message)"
+    }
+    
+    # Test Kafka UI
+    Write-Status "Testing Kafka UI..."
+    try {
+        $response = Invoke-WebRequest -Uri "http://localhost:8001" -Method GET -TimeoutSec 10 -UseBasicParsing
+        if ($response.StatusCode -eq 200) {
+            Write-Success "[OK] Kafka UI is accessible"
+        }
+    }
+    catch {
+        Write-Error "[FAIL] Kafka UI check failed: $($_.Exception.Message)"
+    }
+    
+    # Test MQTT WebSocket endpoint through Nginx
+    Write-Status "Testing MQTT WebSocket endpoint availability..."
+    try {
+        $response = Invoke-WebRequest -Uri "http://localhost/mqtt/" -Method GET -TimeoutSec 10 -UseBasicParsing
+        # MQTT WebSocket endpoint should return some response
+        Write-Success "[OK] MQTT WebSocket endpoint is accessible through Nginx"
+    }
+    catch {
+        Write-Warning "[WARN] MQTT WebSocket endpoint test inconclusive (normal for WebSocket)"
+    }
+    
+    Write-Host ""
+    Write-Status "Service Test Summary Complete"
+    Write-Host "[OK] Use 'docker-compose ps' to check container status" -ForegroundColor Green
+    Write-Host "[OK] Use 'docker-compose logs [service]' to check logs" -ForegroundColor Green
 }
 
 function Test-Nginx {
@@ -268,27 +321,30 @@ function Show-Help {
     Write-Host "  restart       Restart all services" -ForegroundColor Gray
     Write-Host "  status        Show status of all services" -ForegroundColor Gray
     Write-Host "  logs          Show logs for all services" -ForegroundColor Gray
+    Write-Host "  test          Test all available services" -ForegroundColor Gray
+    Write-Host "  test-nginx    Test Nginx configuration and connectivity" -ForegroundColor Gray
+    Write-Host "  restart-nginx Restart Nginx service" -ForegroundColor Gray
     Write-Host "  clean         Clean up containers and networks" -ForegroundColor Gray
     Write-Host "  reset         Reset everything (clean + remove volumes)" -ForegroundColor Gray
     Write-Host "  jwt-secret    Generate a new JWT secret key" -ForegroundColor Gray
     Write-Host "  ssl-generate  Generate SSL certificates for HTTPS" -ForegroundColor Gray
     Write-Host "  kafka-cluster-id  Generate new Kafka cluster ID for KRaft" -ForegroundColor Gray
     Write-Host "  format-kafka  Format Kafka storage for KRaft mode" -ForegroundColor Gray
-    Write-Host "  kafka-cluster-id  Generate a new Kafka Cluster ID" -ForegroundColor Gray
-    Write-Host "  format-kafka  Format Kafka storage with new Cluster ID" -ForegroundColor Gray
     Write-Host ""
     Write-Host "Examples:" -ForegroundColor Green
     Write-Host "  .\manage.ps1 start" -ForegroundColor Gray
     Write-Host "  .\manage.ps1 logs api-gateway" -ForegroundColor Gray
+    Write-Host "  .\manage.ps1 test" -ForegroundColor Gray
     Write-Host "  .\manage.ps1 ssl-generate" -ForegroundColor Gray
     Write-Host "  .\manage.ps1 jwt-secret" -ForegroundColor Gray
     Write-Host ""
     Write-Host "Services Access:" -ForegroundColor Green
     Write-Host "• Main API: http://localhost or https://localhost" -ForegroundColor Gray
     Write-Host "• API Documentation: http://localhost/docs" -ForegroundColor Gray
-    Write-Host "• Kafka UI: http://localhost/kafka-ui/" -ForegroundColor Gray
+    Write-Host "• Kafka UI: http://localhost:8001" -ForegroundColor Gray
     Write-Host "• MQTT WebSocket: ws://localhost/mqtt/" -ForegroundColor Gray
     Write-Host "• MQTT HTTP API: http://localhost/mqtt-api/" -ForegroundColor Gray
+    Write-Host "• Nginx Health: http://localhost:8080/health" -ForegroundColor Gray
     Write-Host "• SSL/TLS encryption available via HTTPS (port 443)" -ForegroundColor Gray
 }
 
@@ -428,6 +484,9 @@ switch ($Command.ToLower()) {
     }
     "build" {
         Build-Images
+    }
+    "test" {
+        Test-AllServices
     }
     "test-nginx" {
         Test-Nginx

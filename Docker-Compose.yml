@@ -13,7 +13,6 @@ services:
       - nginx_logs:/var/log/nginx
     depends_on:
       - api-gateway
-      - kafka-ui
     networks:
       - microservices-network
     restart: unless-stopped
@@ -263,8 +262,8 @@ services:
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
-    # ports:
-    #   - "8080:8080"  # Removed external port exposure - accessible through Nginx at /kafka-ui/
+    ports:
+      - "8001:8080"  # Direct access on port 8001
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092

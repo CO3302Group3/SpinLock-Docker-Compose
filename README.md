@@ -5,34 +5,32 @@ This directory contains the Docker Compose configuration for running all microse
 ## Architecture Overview
 
 This microservices setup follows security best practices by:
-- **Single Entry Point**: Only the API Gateway (port 8000) is exposed externally
+- **Nginx Reverse Proxy**: Main entry point handling HTTP/HTTPS traffic (ports 80, 443, 8080)
+- **API Gateway**: Centralized routing and authentication service
 - **Internal Communication**: All microservices communicate internally via Docker network
 - **Secure Infrastructure**: MQTT, Kafka, and other infrastructure services are internal-only
-- **Centralized Routing**: API Gateway handles authentication, routing, and load balancing
+- **Direct Service Access**: Kafka UI exposed directly on port 8001 for monitoring
 
 ## Services Included
 
 ### Core Services
-- **API Gateway** - `rav2001h/spinlock-api-gateway:latest` - **External Access Point (Port 8000)**
+- **Nginx Gateway** - `nginx:alpine` - **Main entry point (Ports 80, 443, 8080)**
+- **API Gateway** - `rav2001h/spinlock-api-gateway:latest` - **Routing and Auth (Internal)**
 - **User Authentication Service** - `rav2001h/user-auth-microservice:latest` - Internal Only
-- **Device Telemetry** - Handles IoT device data - Internal Only
-- **Device Onboarding** - Manages device registration - Internal Only
-- **GeoLocation** - Location-based services - Internal Only
-- **Parking Slot** - Parking slot management - Internal Only
-- **Health Monitoring** - Service health checks - Internal Only
-- **Alert and Event Processing** - Event handling - Internal Only
-- **Admin Management** - Administrative functions - Internal Only
-- **Notification** - Notification services - Internal Only
-- **Logging** - Centralized logging - Internal Only
+- **Device Telemetry** - Handles IoT device data - Currently Disabled
+- **Device Onboarding** - Manages device registration - Currently Disabled
+- **GeoLocation** - Location-based services - Currently Disabled
+- **Parking Slot** - Parking slot management - Currently Disabled
+- **Health Monitoring** - Service health checks - Currently Disabled
+- **Alert and Event Processing** - Event handling - Currently Disabled
+- **Admin Management** - Administrative functions - Currently Disabled
+- **Notification** - Notification services - Currently Disabled
+- **Logging** - Centralized logging - Currently Disabled
 
-### Infrastructure Services (Internal Only)
-- **MQTT Broker** - Eclipse Mosquitto for IoT communication
-- **Kafka** - Event streaming and messaging platform
-- **Zookeeper** - Kafka coordination service
-- **Kafka UI** - Web interface for Kafka management (currently exposed on 8080)
-- **PostgreSQL** - Database (development mode)
-- **Redis** - Caching (development mode)
-- **Portainer** - Container management UI (development mode)
+### Infrastructure Services
+- **MQTT Broker** - Eclipse Mosquitto for IoT communication - Internal Only
+- **Kafka** - Event streaming platform (KRaft mode, no Zookeeper) - Internal Only
+- **Kafka UI** - Web interface for Kafka management - **Direct Access (Port 8001)**
 
 ## Quick Start
 
@@ -92,76 +90,105 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 docker-compose ps
 ```
 
-## API Gateway - Single Entry Point
+## Nginx Gateway - Main Entry Point
 
-**🔑 All external access must go through the API Gateway at `http://localhost:8000`**
+**🔑 All web traffic goes through the Nginx reverse proxy at the following ports:**
 
-The API Gateway provides:
-- **Authentication**: JWT token validation
-- **Routing**: Routes requests to appropriate microservices
-- **Load Balancing**: Distributes requests across service instances
-- **Rate Limiting**: Protects against abuse
-- **Request/Response Transform**: Standardizes API responses
+- **HTTP**: `http://localhost` (port 80)
+- **HTTPS**: `https://localhost` (port 443) 
+- **Health Checks**: `http://localhost:8080` (internal monitoring)
 
-### API Gateway Endpoints
+### Nginx Gateway Features:
+- **Reverse Proxy**: Routes traffic to API Gateway and other services
+- **SSL/TLS Termination**: Handles HTTPS encryption
+- **Security Headers**: Adds security headers to all responses
+- **Rate Limiting**: Protects against abuse and DDoS
+- **WebSocket Support**: Handles MQTT WebSocket connections
+- **Health Monitoring**: Provides health check endpoints
 
-#### Authentication Routes (routed to User Auth Service)
-- `POST /auth/register` - Register new user
-- `POST /auth/login` - User login
-- `POST /auth/validate` - Validate JWT token
-- `GET /auth/health` - Auth service health check
+### Available Routes through Nginx:
 
-#### Gateway Management
-- `GET /health` - Gateway health check
-- `GET /status` - Overall system status
-- `GET /` - Service information and available endpoints
+#### API Gateway Routes (via Nginx)
+- `GET/POST /*` - All API requests routed to API Gateway
+- `GET /health` - API Gateway health check
+- `POST /auth/*` - Authentication endpoints
 
-#### Other Microservice Routes
-All other microservice endpoints are accessible through the API Gateway with appropriate routing.
+#### Infrastructure Routes (via Nginx)  
+- `GET /mqtt/` - MQTT WebSocket connections
+- `GET /mqtt-api/` - MQTT HTTP API (if configured)
 
-### Testing the API Gateway
-```powershell
-# Test all endpoints
-cd ../APIGateway
-.\test_gateway.ps1
+## Direct Service Access
 
-# Or using Python
-python test_gateway.py
-
-# Direct testing via curl/PowerShell
-Invoke-RestMethod -Uri "http://localhost:8000/health" -Method GET
-```
+### Kafka UI - Direct Access
+**🔍 Kafka monitoring and management:**
+- **URL**: `http://localhost:8001`
+- **Purpose**: Monitor Kafka cluster, topics, consumers, and messages
+- **Features**: Topic management, consumer group monitoring, message browsing
 
 ## Service Access and Architecture
 
 ### External Access (Public)
 | Service | Port | URL | Description |
 |---------|------|-----|-------------|
-| **API Gateway** | **8000** | **http://localhost:8000** | **🌐 Main entry point for all API requests** |
-| Kafka UI | 8080 | http://localhost:8080 | Kafka management interface |
+| **Nginx Gateway** | **80** | **http://localhost** | **🌐 Main HTTP entry point** |
+| **Nginx Gateway** | **443** | **https://localhost** | **🔒 Main HTTPS entry point** |
+| **Nginx Health** | **8080** | **http://localhost:8080** | **⚕️ Health checks and monitoring** |
+| **Kafka UI** | **8001** | **http://localhost:8001** | **📊 Kafka management interface** |
 
 ### Internal Services (Docker Network Only)
 | Service | Internal Address | Description |
 |---------|------------------|-------------|
+| API Gateway | api-gateway:8000 | Routing and authentication |
 | User Auth | user-auth-service:8000 | Authentication service |
 | MQTT Broker | mqtt-broker:1883 | IoT messaging |
-| MQTT WebSocket | mqtt-broker:9001 | Web MQTT |
-| Kafka Broker | kafka:29092 | Event streaming |
-| Zookeeper | zookeeper:2181 | Kafka coordination |
+| MQTT WebSocket | mqtt-broker:9001 | Web MQTT (via nginx /mqtt/) |
+| Kafka Broker | kafka:29092 | Event streaming (KRaft mode) |
 
-### Commented Out Services (Currently Disabled)
+### Currently Disabled Services
 The following services are defined but commented out in docker-compose.yml:
-- Device Telemetry (would be port 8002)
-- Device Onboarding (would be port 8003)
-- GeoLocation (would be port 8004)
-- Parking Slot (would be port 8005)
-- Health Monitoring (would be port 8006)
-- Alert Processing (would be port 8007)
-- Admin Management (would be port 8008)
-- Notification (would be port 8009)
-- Logging (would be port 8010)
+- Device Telemetry (would be internal only)
+- Device Onboarding (would be internal only)
+- GeoLocation (would be internal only)
+- Parking Slot (would be internal only)
+- Health Monitoring (would be internal only)
+- Alert Processing (would be internal only)
+- Admin Management (would be internal only)
+- Notification (would be internal only)  
+- Logging (would be internal only)
 
-**⚠️ Security Note**: Direct service access (except API Gateway) is blocked for security. All requests should go through the API Gateway.
+**📝 Note**: When enabled, these services will be accessible through the Nginx Gateway and API Gateway routing.
+
+## Testing the System
+
+### Test Nginx Gateway
+```powershell  
+# Test main HTTP endpoint
+Invoke-RestMethod -Uri "http://localhost" -Method GET
+
+# Test HTTPS endpoint (if SSL configured)
+Invoke-RestMethod -Uri "https://localhost" -Method GET
+
+# Test health endpoint
+Invoke-RestMethod -Uri "http://localhost:8080/health" -Method GET
+
+# Test nginx status (internal network only)
+curl http://localhost:8080/status
+```
+
+### Test Kafka UI
+```powershell
+# Open Kafka UI in browser or test endpoint
+Invoke-RestMethod -Uri "http://localhost:8001" -Method GET
+```
+
+### Test API Gateway (through Nginx)
+```powershell
+# Test API Gateway health through Nginx
+Invoke-RestMethod -Uri "http://localhost/health" -Method GET
+
+# Test authentication endpoints
+Invoke-RestMethod -Uri "http://localhost/auth/health" -Method GET
+```
 
 ## Management Commands
 
@@ -408,18 +435,20 @@ docker build -t user-auth-microservice:latest .
 
 ## Security Notes
 
+## Security Notes
+
 ### Current Configuration
-- **API Gateway (Port 8000)**: ✅ Secure single entry point
-- **Kafka UI (Port 8080)**: ⚠️ Currently exposed - consider removing in production
+- **Nginx Gateway (Ports 80, 443, 8080)**: ✅ Secure reverse proxy entry point
+- **Kafka UI (Port 8001)**: ⚠️ Direct access for monitoring - consider internal-only in production
 - **All other services**: ✅ Internal only - secure
 
 ### Production Security Best Practices
 
 1. **Remove Kafka UI external access**:
    ```yaml
-   # Comment out in docker-compose.yml
+   # Comment out in docker-compose.yml to make Kafka UI internal-only
    # ports:
-   #   - "8080:8080"
+   #   - "8001:8080"
    ```
 
 2. **Use strong JWT secrets**:
@@ -437,6 +466,35 @@ docker build -t user-auth-microservice:latest .
 
 ### Default Configuration Warning
 ⚠️ **This configuration is optimized for development and local testing. For production deployment, additional security measures are required.**
+
+## Quick Reference
+
+### 🚀 **Start Everything**
+```powershell
+.\manage.ps1 start
+```
+
+### 🔍 **Check Status**
+```powershell
+.\manage.ps1 status
+```
+
+### 🧪 **Test All Services**
+```powershell
+.\manage.ps1 test
+```
+
+### 🌐 **Access Points**
+- **Main API**: http://localhost or https://localhost
+- **Kafka UI**: http://localhost:8001
+- **Nginx Health**: http://localhost:8080/health
+
+### 📊 **Monitor Services**
+```powershell
+.\manage.ps1 logs               # All services
+.\manage.ps1 logs kafka-ui      # Specific service
+docker-compose ps               # Quick status
+```
 
 ## Contributing
 
