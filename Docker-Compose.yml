@@ -185,11 +185,9 @@ services:
   mqtt-broker:
     image: eclipse-mosquitto:2.0
     container_name: mqtt-broker
-    # Enable internal access for HTTP/WebSocket through Nginx
-    # ports:
-    #   - "1883:1883"  # MQTT port - accessible only internally
-    #   - "9001:9001"  # WebSocket port - accessible through Nginx at /mqtt/
-    #   - "8080:8080"  # HTTP API port - accessible through Nginx at /mqtt-api/
+    ports:
+      - "1883:1883"  # MQTT port - accessible externally for publishing
+      - "9001:9001"  # WebSocket port - for web clients (optional)
     volumes:
       - mqtt_data:/mosquitto/data
       - mqtt_logs:/mosquitto/log
