@@ -55,10 +55,12 @@ services:
     #   - "8000:8000"  # Removed external port exposure - only accessible through Nginx
     environment:
       - USER_AUTH_SERVICE_URL=${USER_AUTH_SERVICE_URL:-http://user-auth-service:8000}
+      - TELEMETRY_SERVICE_URL=${TELEMETRY_SERVICE_URL:-http://device-telemetry:8000}
       - GATEWAY_PORT=${GATEWAY_PORT:-8000}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       - user-auth-service
+      - device-telemetry
     networks:
       - microservices-network
     restart: unless-stopped
@@ -69,7 +71,32 @@ services:
       retries: 3
       start_period: 30s
   
-  # # Device Telemetry Service
+  # Device Telemetry Service
+  device-telemetry:
+    image: rav2001h/device-telemetry:latest
+    container_name: device-telemetry-microservice
+    # ports:
+    #   - "8002:8000"  # Removed external port exposure - only accessible through API Gateway
+    environment:
+      - MQTT_BROKER_HOST=mqtt-broker
+      - MQTT_BROKER_PORT=1883
+      - MQTT_TOPIC=bike/telemetry
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+    depends_on:
+      - mqtt-broker
+      - kafka
+    networks:
+      - microservices-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+
+  #Device Telemetry Service
   # device-telemetry:
   #   image: device-telemetry:latest
   #   container_name: device-telemetry
