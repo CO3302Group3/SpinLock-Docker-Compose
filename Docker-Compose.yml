@@ -82,10 +82,36 @@ services:
       - MQTT_BROKER_HOST=mqtt-broker
       - MQTT_BROKER_PORT=1883
       - MQTT_TOPIC=bike/telemetry
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - MONGO_DB=mongodb://mongo:27017
       - MONGO_USERNAME=root
       - MONGO_PASSWORD=example
+      - KAFKA_URL=kafka:29092
+    depends_on:
+      - mqtt-broker
+      - kafka
+      - user-auth-service
+      - mongo
+      - mongo-express
+    networks:
+      - microservices-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  event-processing:
+    image: rav2001h/device-event:latest
+    container_name: event-processing-microservice
+    # ports:
+    #   - "8003:8000"  # Removed external port exposure - only accessible through API Gateway
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - MQTT_BROKER_HOST=mqtt-broker
+      - MQTT_BROKER_PORT=1883
+      - MQTT_TOPIC=bike/telemetry
     depends_on:
       - mqtt-broker
       - kafka
@@ -110,6 +136,9 @@ services:
       - MQTT_BROKER_PORT=1883
       - MQTT_TOPIC=bike/health
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - MONGO_DB=mongodb://mongo:27017
+      - MONGO_USERNAME=root
+      - MONGO_PASSWORD=example
     depends_on:
       - mqtt-broker
       - kafka
