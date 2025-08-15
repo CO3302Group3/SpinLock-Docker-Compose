@@ -23,6 +23,36 @@ services:
       retries: 3
       start_period: 10s
 
+  # API Gateway
+  api-gateway:
+    image: rav2001h/spinlock-api-gateway:latest
+    container_name: spinlock-api-gateway
+    # ports:
+    #   - "8000:8000"  # Removed external port exposure - only accessible through Nginx
+    environment:
+      - USER_AUTH_SERVICE_URL=${USER_AUTH_SERVICE_URL:-http://user-auth-service:8000}
+      - TELEMETRY_SERVICE_URL=${TELEMETRY_SERVICE_URL:-http://device-telemetry:8000}
+      - DEVICE_HEALTH_SERVICE_URL=${DEVICE_HEALTH_SERVICE_URL:-http://device-health:8000}
+      - DEVICE_EVENTS_SERVICE_URL=${DEVICE_EVENTS_SERVICE_URL:-http://event-processing:8000}
+      - DEVICE_NOTIFICATION_SERVICE_URL=${DEVICE_NOTIFICATION_SERVICE_URL:-http://device-notification:8000}
+      - GATEWAY_PORT=${GATEWAY_PORT:-8000}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      - user-auth-service
+      - device-telemetry
+      - device-health
+      - event-processing
+      - device-notification
+    networks:
+      - microservices-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   # User Authentication Microservice (from Docker Hub)
   user-auth-service:
     image: rav2001h/user-auth-microservice:latest
@@ -37,31 +67,6 @@ services:
       - DEBUG=${DEBUG:-false}
     volumes:
       - user_auth_data:/app/data
-    networks:
-      - microservices-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
-  # API Gateway
-  api-gateway:
-    image: rav2001h/spinlock-api-gateway:latest
-    container_name: spinlock-api-gateway
-    # ports:
-    #   - "8000:8000"  # Removed external port exposure - only accessible through Nginx
-    environment:
-      - USER_AUTH_SERVICE_URL=${USER_AUTH_SERVICE_URL:-http://user-auth-service:8000}
-      - TELEMETRY_SERVICE_URL=${TELEMETRY_SERVICE_URL:-http://device-telemetry:8000}
-      - DEVICE_HEALTH_SERVICE_URL=${DEVICE_HEALTH_SERVICE_URL:-http://device-health:8000}
-      - GATEWAY_PORT=${GATEWAY_PORT:-8000}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-    depends_on:
-      - user-auth-service
-      - device-telemetry
     networks:
       - microservices-network
     restart: unless-stopped
@@ -109,6 +114,7 @@ services:
     #   - "8003:8000"  # Removed external port exposure - only accessible through API Gateway
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_TOPIC=notify-device_events
       - MQTT_BROKER_HOST=mqtt-broker
       - MQTT_BROKER_PORT=1883
       - MQTT_TOPIC=bike/telemetry
@@ -141,6 +147,31 @@ services:
       - MONGO_PASSWORD=example
     depends_on:
       - mqtt-broker
+      - kafka
+      - user-auth-service
+      - mongo
+      - mongo-express
+    networks:
+      - microservices-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  device-notification:
+    image: rav2001h/device-notifications:latest
+    container_name: device-notification-microservice
+    # ports:
+    #   - "8004:8000"  # Removed external port exposure - only accessible through API Gateway
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_TOPIC=notify-device_events
+      - KAFKA_GROUP_ID=notification_service
+      - QUEUE_POLL_INTERVAL=1.0
+    depends_on:
       - kafka
       - user-auth-service
       - mongo
