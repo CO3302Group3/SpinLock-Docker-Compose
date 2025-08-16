@@ -107,6 +107,25 @@ services:
       retries: 3
       start_period: 30s
 
+  device-onboarding:
+    image: rav2001h/device-onboarding:latest
+    container_name: device-onboarding-microservice
+    # ports:
+    #   - "8003:8000"  # Removed external port exposure - only accessible through API Gateway
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///UserData.db}
+    depends_on:
+    - user-auth-service
+    networks:
+      - microservices-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   event-processing:
     image: rav2001h/device-event:latest
     container_name: event-processing-microservice
