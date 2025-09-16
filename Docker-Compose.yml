@@ -116,7 +116,31 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL:-sqlite:///UserData.db}
     depends_on:
+    - mongo
     - user-auth-service
+    networks:
+      - microservices-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  device-command:
+    image: rav2001h/device-command:latest
+    container_name: device-command-microservice
+    environment:
+      - MONGO_DB=mongodb://mongo:27017
+      - MONGO_USERNAME=root
+      - MONGO_PASSWORD=example
+      - USER_ONBOARDING_SERVICE_URL=${USER_ONBOARDING_SERVICE_URL:-http://device-onboarding:8000}
+    depends_on:
+      - device-onboarding
+      - user-auth-service
+      - mongo
+      - mongo-express
     networks:
       - microservices-network
     restart: unless-stopped
