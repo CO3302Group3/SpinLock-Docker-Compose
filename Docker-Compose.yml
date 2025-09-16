@@ -135,7 +135,7 @@ services:
       - MONGO_DB=mongodb://mongo:27017
       - MONGO_USERNAME=root
       - MONGO_PASSWORD=example
-      - USER_ONBOARDING_SERVICE_URL=${USER_ONBOARDING_SERVICE_URL:-http://device-onboarding:8000}
+      - DEVICE_ONBOARDING_SERVICE_URL=${DEVICE_ONBOARDING_SERVICE_URL:-http://device-onboarding:8000}
     depends_on:
       - device-onboarding
       - user-auth-service
