@@ -470,6 +470,21 @@ services:
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: example
+
+  # Watchtower for automatic container updates
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true  # Remove old images after updates
+      - WATCHTOWER_POLL_INTERVAL=30  # Check for updates every 30 seconds
+      - WATCHTOWER_INCLUDE_STOPPED=true  # Also monitor stopped containers
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
 # Networks
 networks:
   microservices-network:
@@ -500,4 +515,3 @@ volumes:
     driver: local
   mysql_data:
     driver: local
-  
