@@ -39,6 +39,14 @@ This microservices setup follows security best practices by:
 - PowerShell (Windows) or Bash (Linux/Mac)
 
 ### Step 0: Environment Configuration
+
+Make sure both the root `.env` file **and** the `service_account.env` secrets file are populated before building the stack:
+
+1. Copy the `.env` template and tailor the values to your environment.
+2. (Optional) Generate a fresh JWT secret for local development or production overrides.
+3. Edit `.env` with database URLs, ports, and any overrides you need.
+4. Open `service_account.env` and paste your Firebase service account JSON (single-line string with `\n` for newlines) and matching `JWT_SECRET_KEY` for the user-auth service.
+
 ```powershell
 # Copy environment template
 copy .env.example .env
@@ -48,7 +56,12 @@ copy .env.example .env
 
 # Edit .env file with your configuration
 notepad .env
+
+# Update Firebase credentials consumed by user-auth microservice
+notepad service_account.env
 ```
+
+> ℹ️ **Tip:** If your Firebase service account JSON spans multiple lines, convert it to a compact JSON string (replace actual newlines with `\n`) before saving it in `service_account.env`. Keep this file out of version control in production deployments.
 
 ### Step 1: Build and Pull Images
 ```powershell

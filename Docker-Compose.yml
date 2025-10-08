@@ -88,8 +88,6 @@ services:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=${DATABASE_URL:-sqlite:///UserData.db}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-super-secret-jwt-key-change-in-production}
-      - GOOGLE_SERVICE_ACCOUNT_JSON=${GOOGLE_SERVICE_ACCOUNT_JSON:-/app/credentials/google_service_account.json}
       - DEBUG=${DEBUG:-false}
     volumes:
       - user_auth_data:/app/data
