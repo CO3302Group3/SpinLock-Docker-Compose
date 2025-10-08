@@ -36,6 +36,7 @@ services:
       - DEVICE_EVENTS_SERVICE_URL=${DEVICE_EVENTS_SERVICE_URL:-http://event-processing:8000}
       - DEVICE_NOTIFICATION_SERVICE_URL=${DEVICE_NOTIFICATION_SERVICE_URL:-http://device-notification:8000}
       - DEVICE_ONBOARDING_SERVICE_URL=${DEVICE_ONBOARDING_SERVICE_URL:-http://device-onboarding:8000}
+      - ADMIN_MANAGEMENT_SERVICE_URL=${ADMIN_MANAGEMENT_SERVICE_URL:-http://admin-management:8000}
       - GATEWAY_PORT=${GATEWAY_PORT:-8000}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
@@ -53,6 +54,29 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  admin-management:
+    image: rav2001h/admin-management:latest
+    container_name: admin-management-microservice
+    # ports:
+    #   - "8005:8000"  # Removed external port exposure - only accessible through API Gateway
+    environment:
+      - USER_AUTH_SERVICE_URL=${USER_AUTH_SERVICE_URL:-http://user-auth-service:8000}
+      - DEVICE_ONBOARDING_SERVICE_URL=${DEVICE_ONBOARDING_SERVICE_URL:-http://device-onboarding:8000}
+    depends_on:
+      - user-auth-service
+      - device-onboarding
+      - mongo
+      - mongo-express
+    networks:
+      - microservices-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s  
 
   # User Authentication Microservice (from Docker Hub)
   user-auth-service:
@@ -136,6 +160,7 @@ services:
       - MONGO_USERNAME=root
       - MONGO_PASSWORD=example
       - DEVICE_ONBOARDING_SERVICE_URL=${DEVICE_ONBOARDING_SERVICE_URL:-http://device-onboarding:8000}
+      - USER_AUTH_SERVICE_URL=${USER_AUTH_SERVICE_URL:-http://user-auth-service:8000}
     depends_on:
       - device-onboarding
       - user-auth-service
