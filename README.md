@@ -1,521 +1,280 @@
-# Microservices Docker Compose Setup
+# SpinLock Smart Parking Platform – Docker Compose Orchestration
 
-This directory contains the Docker Compose configuration for running all microservices in the Smart Parking System using a secure **API Gateway pattern**.
+This directory contains the **SpinLock microservices orchestration layer**. It packages every service, gateway, broker, database, and helper needed to run the full Smart Parking solution locally or in a container-friendly production environment. The stack embraces an API Gateway security pattern, isolates internal traffic, and offers opinionated tooling for day-to-day DevOps tasks.
 
-## Architecture Overview
+---
 
-This microservices setup follows security best practices by:
-- **Nginx Reverse Proxy**: Main entry point handling HTTP/HTTPS traffic (ports 80, 443, 8080)
-- **API Gateway**: Centralized routing and authentication service
-- **Internal Communication**: All microservices communicate internally via Docker network
-- **Secure Infrastructure**: MQTT, Kafka, and other infrastructure services are internal-only
-- **Direct Service Access**: Kafka UI exposed directly on port 8001 for monitoring
+## 🔭 What You Get
 
-## Services Included
+- **End-to-end microservice topology** for SpinLock’s smart parking capabilities.
+- Hardened **API Gateway + Nginx reverse proxy** front door with TLS termination.
+- Optional **domain microservices** (parking, telemetry, onboarding, etc.) pre-wired but toggled off by default until images are available.
+- **Eventing backbone** (Kafka), **IoT messaging** (Mosquitto MQTT), and **monitoring UI** (Kafka UI).
+- Batteries-included **PowerShell automation** via `manage.ps1` for Windows hosts.
+- Drop-in secrets management via `.env`, `service_account.env`, and `ssl/` certificates.
 
-### Core Services
-- **Nginx Gateway** - `nginx:alpine` - **Main entry point (Ports 80, 443, 8080)**
-- **API Gateway** - `rav2001h/spinlock-api-gateway:latest` - **Routing and Auth (Internal)**
-- **User Authentication Service** - `rav2001h/user-auth-microservice:latest` - Internal Only
-- **Device Telemetry** - Handles IoT device data - Currently Disabled
-- **Device Onboarding** - Manages device registration - Currently Disabled
-- **GeoLocation** - Location-based services - Currently Disabled
-- **Parking Slot** - Parking slot management - Currently Disabled
-- **Health Monitoring** - Service health checks - Currently Disabled
-- **Alert and Event Processing** - Event handling - Currently Disabled
-- **Admin Management** - Administrative functions - Currently Disabled
-- **Notification** - Notification services - Currently Disabled
-- **Logging** - Centralized logging - Currently Disabled
+---
 
-### Infrastructure Services
-- **MQTT Broker** - Eclipse Mosquitto for IoT communication - Internal Only
-- **Kafka** - Event streaming platform (KRaft mode, no Zookeeper) - Internal Only
-- **Kafka UI** - Web interface for Kafka management - **Direct Access (Port 8001)**
+## 🗂️ Repository Layout
 
-## Quick Start
+| Path | Purpose |
+|------|---------|
+| `docker-compose.yml` | Production-focused service graph (core + infra).
+| `docker-compose.dev.yml` | Development overlay enabling extra tooling and hot reload.
+| `manage.ps1` | Convenience wrapper around Compose (build, pull, start, stop, logs, reset, JWT secret, etc.).|
+| `mosquitto.conf` | Custom configuration for the MQTT broker.
+| `nginx.conf` | Edge proxy configuration (reverse proxy, TLS, rate limiting, websockets).
+| `ssl/` | Placeholder for self-signed or CA-provided cert/key pairs used by Nginx. |
+| `service_account.env` | Firebase service account + JWT secret consumed by Auth service. |
+| `Docker-Compose.yml` *(legacy)* | Historical compose definition; retains reference for older deployments. |
 
-### Prerequisites
-- Docker and Docker Compose installed
-- PowerShell (Windows) or Bash (Linux/Mac)
+> ⚠️ Keep `service_account.env` and any real certificates untracked. They already appear in `.gitignore`; don’t remove those entries.
 
-### Step 0: Environment Configuration
+---
 
-Make sure both the root `.env` file **and** the `service_account.env` secrets file are populated before building the stack:
+## 🏗️ System Architecture
 
-1. Copy the `.env` template and tailor the values to your environment.
-2. (Optional) Generate a fresh JWT secret for local development or production overrides.
-3. Edit `.env` with database URLs, ports, and any overrides you need.
-4. Open `service_account.env` and paste your Firebase service account JSON (single-line string with `\n` for newlines) and matching `JWT_SECRET_KEY` for the user-auth service.
-
-```powershell
-# Copy environment template
-copy .env.example .env
-
-# Generate a secure JWT secret (optional)
-.\manage.ps1 jwt-secret
-
-# Edit .env file with your configuration
-notepad .env
-
-# Update Firebase credentials consumed by user-auth microservice
-notepad service_account.env
+```
+┌────────────┐      ┌───────────────┐      ┌───────────────────┐
+│  Clients   │ ---> │  Nginx Proxy  │ ---> │   API Gateway      │
+└────────────┘      └───────────────┘      └───────────────────┘
+                                                │
+                   ┌────────────────────────────┴───────────────────────────┐
+                   │                                                        │
+             Domain Microservices                                    Infrastructure
+ (Auth, Device, Parking, Alerts, Admin, ...)                  (Kafka, MQTT, DBs, Observability)
 ```
 
-> ℹ️ **Tip:** If your Firebase service account JSON spans multiple lines, convert it to a compact JSON string (replace actual newlines with `\n`) before saving it in `service_account.env`. Keep this file out of version control in production deployments.
+### Entry Tier
+- **Nginx (`nginx:alpine`)** terminates TLS (ports 80/443), serves health probes (8080), and forwards WebSocket traffic for MQTT.
+- **SpinLock API Gateway (`rav2001h/spinlock-api-gateway:latest`)** centralizes auth, routing, throttling, and request logging.
 
-### Step 1: Build and Pull Images
-```powershell
-# Windows PowerShell
-.\manage.ps1 build    # Build API Gateway
-.\manage.ps1 pull     # Pull other images
+### Core Runtime Services
+| Service | Image | Status | Highlights |
+|---------|-------|--------|------------|
+| User Authentication | `rav2001h/user-auth-microservice:latest` | ✅ Enabled | JWT issuance, Firebase integration, RBAC hooks. |
+| Admin Management | (build locally) | ⏸️ Disabled by default | Administrative workflows, tenancy. |
+| Device Telemetry | (build locally) | ⏸️ Disabled | Ingests IoT metrics into Kafka/PostgreSQL. |
+| Device Onboarding | (build locally) | ⏸️ Disabled | Device registry, provisioning. |
+| GeoLocation | (build locally) | ⏸️ Disabled | GIS enrichment for parking assets. |
+| Parking Slot | (build locally) | ⏸️ Disabled | Availability and reservations. |
+| Health Monitoring | (build locally) | ⏸️ Disabled | Probes other services, publishes alerts. |
+| Alert & Event Processing | (build locally) | ⏸️ Disabled | Stream processors for Kafka topics. |
+| Notification | (build locally) | ⏸️ Disabled | Push/email/SMS fan-out. |
+| Logging | (build locally) | ⏸️ Disabled | Centralized log shipper. |
 
-# Or use Docker Compose directly
-docker-compose build
-docker-compose pull
-```
+Toggle these services on by uncommenting them in `docker-compose.yml` and ensuring the corresponding images are either built locally or available in a registry.
 
-### Step 2: Start Services
+### Infrastructure Pillars
+- **Apache Kafka (KRaft mode)**: Durable event streaming at `kafka:29092` (internal). Default topics: `device.telemetry`, `parking.events`, `user.events`, `alerts.critical`, `notifications.queue`, `audit.logs`.
+- **Kafka UI**: `http://localhost:8001` for topic browsing, consumer lag, and message inspection.
+- **Eclipse Mosquitto MQTT**: Core IoT ingress at `mqtt-broker:1883` plus WebSocket bridge `mqtt-broker:9001` proxied via Nginx `/mqtt/`.
+- **Optional Dev Dependencies** *(docker-compose.dev.yml)*: PostgreSQL, Redis, Portainer, Adminer — helpful during feature work.
 
-#### Production Mode
-```powershell
-# Windows PowerShell
-.\manage.ps1 start
+---
 
-# Or use Docker Compose directly
-docker-compose up -d
-```
+## 🚀 Quick Start
 
-#### Development Mode (with additional services)
-```powershell
-# Windows PowerShell
-.\manage.ps1 start-dev
+1. **Install prerequisites**
+   - Docker Engine 24+
+   - Docker Compose v2
+   - Windows PowerShell 5.1+ (or PowerShell Core / Bash if not on Windows)
 
-# Or use Docker Compose directly
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
-```
+2. **Seed environment files**
+   ```powershell
+   copy .env.example .env
+   .\manage.ps1 jwt-secret             # optional: generate a random JWT secret
+   notepad .env                         # set ports, image tags, network CIDRs
+   notepad service_account.env          # paste compact Firebase JSON + JWT secret
+   ```
 
-### Step 3: Check Status
-```powershell
-# Windows PowerShell
-.\manage.ps1 status
+   - `.env` controls generic Compose variables (published ports, image names, secrets references).
+   - `service_account.env` must contain `FIREBASE_CREDENTIALS` (single-line JSON) and `JWT_SECRET_KEY` for the auth service.
+   - Place any `fullchain.pem`/`privkey.pem` files inside `ssl/` and adjust `nginx.conf`/`.env` accordingly.
 
-# Or use Docker Compose directly
-docker-compose ps
-```
+3. **Build/pull images**
+   ```powershell
+   .\manage.ps1 build   # builds local Dockerfiles (API Gateway, etc.)
+   .\manage.ps1 pull    # pulls remote images defined in compose files
+   ```
 
-## Nginx Gateway - Main Entry Point
+   Need direct Compose?
+   ```powershell
+   docker compose build
+   docker compose pull
+   ```
 
-**🔑 All web traffic goes through the Nginx reverse proxy at the following ports:**
+4. **Launch the stack**
+   - **Production profile** (minimal footprint):
+     ```powershell
+     .\manage.ps1 start
+     # alt
+     docker compose up -d
+     ```
+   - **Development profile** (extra services, live reload mounts):
+     ```powershell
+     .\manage.ps1 start-dev
+     # alt
+     docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+     ```
 
-- **HTTP**: `http://localhost` (port 80)
-- **HTTPS**: `https://localhost` (port 443) 
-- **Health Checks**: `http://localhost:8080` (internal monitoring)
+5. **Observe status and logs**
+   ```powershell
+   .\manage.ps1 status
+   .\manage.ps1 logs                # tail every container
+   .\manage.ps1 logs api-gateway    # focus on a single service
+   docker compose ps
+   ```
 
-### Nginx Gateway Features:
-- **Reverse Proxy**: Routes traffic to API Gateway and other services
-- **SSL/TLS Termination**: Handles HTTPS encryption
-- **Security Headers**: Adds security headers to all responses
-- **Rate Limiting**: Protects against abuse and DDoS
-- **WebSocket Support**: Handles MQTT WebSocket connections
-- **Health Monitoring**: Provides health check endpoints
+---
 
-### Available Routes through Nginx:
+## 🌐 Access Points
 
-#### API Gateway Routes (via Nginx)
-- `GET/POST /*` - All API requests routed to API Gateway
-- `GET /health` - API Gateway health check
-- `POST /auth/*` - Authentication endpoints
+| Endpoint | URL/Port | Description |
+|----------|----------|-------------|
+| Nginx HTTP | `http://localhost` (80) | Primary entry point (routes to API Gateway). |
+| Nginx HTTPS | `https://localhost` (443) | TLS-secured ingress (requires certs in `ssl/`). |
+| Nginx Health | `http://localhost:8080/health` | Gateway heartbeat; `/status` exposes stub metrics. |
+| SpinLock API Gateway | `http://api-gateway:8000` (internal) | Downstream routing for microservices. |
+| Kafka UI | `http://localhost:8001` | Observability for Kafka topics/consumers. |
+| Mosquitto MQTT | `mqtt://mqtt-broker:1883` (internal) | Native MQTT broker endpoint. |
+| Mosquitto WebSocket | `ws://localhost/mqtt/` | Web clients via Nginx WebSocket proxy. |
 
-#### Infrastructure Routes (via Nginx)  
-- `GET /mqtt/` - MQTT WebSocket connections
-- `GET /mqtt-api/` - MQTT HTTP API (if configured)
+---
 
-## Direct Service Access
+## 🔐 Security Blueprint
 
-### Kafka UI - Direct Access
-**🔍 Kafka monitoring and management:**
-- **URL**: `http://localhost:8001`
-- **Purpose**: Monitor Kafka cluster, topics, consumers, and messages
-- **Features**: Topic management, consumer group monitoring, message browsing
+1. **API Gateway enforcement**: All REST traffic flows through Nginx ➜ API Gateway. JWT validation, route authorization, and rate limits live here.
+2. **Network isolation**: Only Nginx and Kafka UI publish host ports. All other containers communicate over the `microservices-network` bridge.
+3. **Secrets discipline**: `.env`, `service_account.env`, and TLS files kept local. Consider Docker secrets or Vault in production.
+4. **Transport security**: Provide certificates in `ssl/` and switch Nginx to enforce HTTPS-only by editing `nginx.conf`.
+5. **Defense in depth checklist**
+   - [ ] Rotate JWT secrets regularly (`manage.ps1 jwt-secret`).
+   - [ ] Disable Kafka UI port in production (`ports:` block in compose).
+   - [ ] Enable Web Application Firewall (AWS WAF / Cloudflare) upstream if public facing.
+   - [ ] Centralize audit logs (enable `Logging` microservice and point to ELK/Loki).
+   - [ ] Restrict Docker host firewall to published ports only.
 
-## Service Access and Architecture
+---
 
-### External Access (Public)
-| Service | Port | URL | Description |
-|---------|------|-----|-------------|
-| **Nginx Gateway** | **80** | **http://localhost** | **🌐 Main HTTP entry point** |
-| **Nginx Gateway** | **443** | **https://localhost** | **🔒 Main HTTPS entry point** |
-| **Nginx Health** | **8080** | **http://localhost:8080** | **⚕️ Health checks and monitoring** |
-| **Kafka UI** | **8001** | **http://localhost:8001** | **📊 Kafka management interface** |
-
-### Internal Services (Docker Network Only)
-| Service | Internal Address | Description |
-|---------|------------------|-------------|
-| API Gateway | api-gateway:8000 | Routing and authentication |
-| User Auth | user-auth-service:8000 | Authentication service |
-| MQTT Broker | mqtt-broker:1883 | IoT messaging |
-| MQTT WebSocket | mqtt-broker:9001 | Web MQTT (via nginx /mqtt/) |
-| Kafka Broker | kafka:29092 | Event streaming (KRaft mode) |
-
-### Currently Disabled Services
-The following services are defined but commented out in docker-compose.yml:
-- Device Telemetry (would be internal only)
-- Device Onboarding (would be internal only)
-- GeoLocation (would be internal only)
-- Parking Slot (would be internal only)
-- Health Monitoring (would be internal only)
-- Alert Processing (would be internal only)
-- Admin Management (would be internal only)
-- Notification (would be internal only)  
-- Logging (would be internal only)
-
-**📝 Note**: When enabled, these services will be accessible through the Nginx Gateway and API Gateway routing.
-
-## Testing the System
-
-### Test Nginx Gateway
-```powershell  
-# Test main HTTP endpoint
-Invoke-RestMethod -Uri "http://localhost" -Method GET
-
-# Test HTTPS endpoint (if SSL configured)
-Invoke-RestMethod -Uri "https://localhost" -Method GET
-
-# Test health endpoint
-Invoke-RestMethod -Uri "http://localhost:8080/health" -Method GET
-
-# Test nginx status (internal network only)
-curl http://localhost:8080/status
-```
-
-### Test Kafka UI
-```powershell
-# Open Kafka UI in browser or test endpoint
-Invoke-RestMethod -Uri "http://localhost:8001" -Method GET
-```
-
-### Test API Gateway (through Nginx)
-```powershell
-# Test API Gateway health through Nginx
-Invoke-RestMethod -Uri "http://localhost/health" -Method GET
-
-# Test authentication endpoints
-Invoke-RestMethod -Uri "http://localhost/auth/health" -Method GET
-```
-
-## Management Commands
-
-### Using PowerShell Script (Windows)
-
-```powershell
-# Pull all images
-.\manage.ps1 pull
-
-# Generate JWT secret
-.\manage.ps1 jwt-secret
-
-# Start services
-.\manage.ps1 start              # Production mode
-.\manage.ps1 start-dev          # Development mode
-
-# Stop services
-.\manage.ps1 stop
-
-# Restart services
-.\manage.ps1 restart
-
-# View logs
-.\manage.ps1 logs               # All services
-.\manage.ps1 logs user-auth-service  # Specific service
-
-# Check status
-.\manage.ps1 status
-
-# Reset everything (careful!)
-.\manage.ps1 reset
-
-# Show help
-.\manage.ps1 help
-```
-
-### Using Docker Compose Directly
-
-```bash
-# Pull images
-docker-compose pull
-
-# Start services
-docker-compose up -d                                    # Production
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d  # Development
-
-# Stop services
-docker-compose down
-
-# View logs
-docker-compose logs -f
-docker-compose logs -f user-auth-service
-
-# Check status
-docker-compose ps
-
-# Remove everything including volumes
-docker-compose down -v
-```
-
-## Kafka Configuration
-
-### Event Streaming Topics
-
-The system uses Kafka for event-driven communication between microservices. Common topics include:
-
-- `device.telemetry` - Device sensor data
-- `parking.events` - Parking slot status changes
-- `user.events` - User registration/login events
-- `alerts.critical` - Critical system alerts
-- `notifications.queue` - Notification messages
-- `audit.logs` - System audit events
-
-### Kafka Management
-
-**⚠️ Note**: Kafka UI is currently exposed on port 8080. In production, consider removing external access.
-
-Access the Kafka UI at `http://localhost:8080` to:
-- View topics and partitions
-- Monitor message throughput
-- Create/delete topics
-- View consumer groups
-- Browse messages
-
-### Internal Kafka Communication
-
-Services communicate with Kafka using the internal address:
-```yaml
-environment:
-  - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-```
-
-**Important**: External Kafka access (port 9092) is disabled for security. Use docker exec to access Kafka CLI tools if needed:
-```powershell
-# Access Kafka CLI tools
-docker exec -it kafka kafka-topics --bootstrap-server localhost:9092 --list
-```
-
-## Configuration
+## ⚙️ Configuration Highlights
 
 ### Environment Variables
 
-The services can be configured using environment variables. Key configurations:
+| Key | Default | Consumed By | Notes |
+|-----|---------|-------------|-------|
+| `JWT_SECRET_KEY` | _(generated)_ | API Gateway, Auth | Must match value inside `service_account.env`. |
+| `JWT_ALGORITHM` | `HS256` | Auth | Change only if every issuer/consumer agrees. |
+| `DATABASE_URL` | n/a | Domain services | Set when enabling services needing persistence. |
+| `KAFKA_BOOTSTRAP_SERVERS` | `kafka:29092` | Event clients | Matches internal service name. |
+| `MQTT_BROKER_URL` | `mqtt-broker` | Device services | Use `wss://` via Nginx for browsers. |
+| `LOG_LEVEL` | `INFO` | Most services | Elevate to `DEBUG` in dev overlay. |
 
-- `JWT_SECRET_KEY` - Secret key for JWT token generation (required)
-- `JWT_ALGORITHM` - JWT algorithm (default: HS256)
-- `JWT_EXPIRATION_HOURS` - Token expiration time (default: 24)
-- `DATABASE_URL` - Database connection string
-- `MQTT_BROKER_URL` - MQTT broker connection
-- `KAFKA_BOOTSTRAP_SERVERS` - Kafka bootstrap servers
-- `DEBUG` - Enable debug mode (development)
-- `LOG_LEVEL` - Logging level
+### Volumes
+- `kafka_data`, `kafka_logs`: Kafka durability.
+- `mqtt_data`: Mosquitto persistence.
+- `user_auth_data`: Auth DB snapshots (if the service mounts a volume).
+- Additional dev-mode volumes: `postgres_data`, `redis_data`, `portainer_data`.
 
-**Security Note**: Always use a strong, randomly generated JWT secret in production!
+### Network
+- Default bridge: `microservices-network` (`172.20.0.0/16`). Override subnet via `.env` if necessary.
 
-### Volume Mounts
+---
 
-- `user_auth_data` - User authentication data
-- `logs_data` - Application logs
-- `mqtt_data` - MQTT broker data
-- `kafka_data` - Kafka broker data
-- `zookeeper_data` - Zookeeper data
-- `postgres_data` - PostgreSQL data (dev)
-- `redis_data` - Redis data (dev)
+## 🧪 Validation & Smoke Tests
 
-## Security Architecture
-
-### API Gateway Pattern Benefits
-
-✅ **Single Entry Point**: All external traffic goes through port 8000  
-✅ **Authentication**: Centralized JWT token validation  
-✅ **Authorization**: Role-based access control  
-✅ **Rate Limiting**: Protection against abuse  
-✅ **Request/Response Logging**: Centralized audit trail  
-✅ **Service Discovery**: Internal service routing  
-
-### Security Implementation
-
-1. **Network Isolation**: Microservices communicate only via internal Docker network
-2. **No Direct Access**: Infrastructure services (MQTT, Kafka) not externally accessible
-3. **Authentication Gateway**: All requests authenticated at the gateway level
-4. **Secure Defaults**: Production-ready security configurations
-
-### Production Security Checklist
-
-- [ ] Generate strong JWT secrets (`.\manage.ps1 jwt-secret`)
-- [ ] Remove Kafka UI external access (comment out port 8080)
-- [ ] Configure HTTPS/TLS termination at the gateway
-- [ ] Set up proper firewall rules
-- [ ] Use secrets management (Docker secrets, Kubernetes secrets)
-- [ ] Enable audit logging
-- [ ] Configure rate limiting policies
-
-## Network Configuration
-
-All services run on the `microservices-network` bridge network with subnet `172.20.0.0/16`.
-
-**Internal Service Communication Examples**:
-- User Auth Service: `http://user-auth-service:8000`
-- MQTT Broker: `mqtt://mqtt-broker:1883`
-- Kafka: `kafka:29092`
-- Zookeeper: `zookeeper:2181`
-
-## Development vs Production
-
-### Production Mode
-- Minimal services
-- Optimized for performance
-- Uses production-ready configurations
-
-### Development Mode
-- Additional debugging services
-- Database and cache services included
-- Volume mounts for hot reloading
-- Portainer for container management
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Port conflicts**: Check if ports are already in use
-   ```powershell
-   netstat -an | findstr ":8000"  # Check if API Gateway port is in use
-   ```
-
-2. **Missing images**: Run `.\manage.ps1 pull` to download images
-
-3. **Service not starting**: Check logs with `.\manage.ps1 logs [service-name]`
-
-4. **Network issues**: Restart Docker or use `.\manage.ps1 reset`
-
-5. **Cannot access services**: Remember only API Gateway (port 8000) is externally accessible
-
-### Health Checks
-
-Check service health through the API Gateway:
 ```powershell
-# Check API Gateway health
-Invoke-RestMethod -Uri "http://localhost:8000/health"
+# Gateway availability
+Invoke-RestMethod -Uri "http://localhost/health" -Method GET
 
-# Check overall system status
-Invoke-RestMethod -Uri "http://localhost:8000/status"
+# Auth service via routed path
+Invoke-RestMethod -Uri "http://localhost/auth/health" -Method GET
+
+# MQTT readiness (requires MQTT client)
+docker exec mqtt-broker mosquitto_pub -t "spinlock/ping" -m "hello"
+
+# Kafka topic listing
+docker exec kafka kafka-topics --bootstrap-server localhost:9092 --list
+
+# Kafka UI reachability
+Invoke-RestMethod -Uri "http://localhost:8001" -Method GET
 ```
 
-### Internal Service Debugging
+For end-to-end device tests, sample MQTT/WebSocket clients live in `../test/` (see `mqtt_client.py`, `websocket_mqtt_client.py`).
 
-To debug internal services, use docker exec:
+---
+
+## 🧰 Day‑to‑Day Operations
+
+| Action | PowerShell | Compose Equivalent |
+|--------|------------|--------------------|
+| Build local images | `./manage.ps1 build` | `docker compose build` |
+| Pull remote images | `./manage.ps1 pull` | `docker compose pull` |
+| Start (prod) | `./manage.ps1 start` | `docker compose up -d` |
+| Start (dev) | `./manage.ps1 start-dev` | `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d` |
+| Stop | `./manage.ps1 stop` | `docker compose down` |
+| Restart | `./manage.ps1 restart` | `docker compose down; docker compose up -d` |
+| Tail logs | `./manage.ps1 logs` | `docker compose logs -f` |
+| Logs (service) | `./manage.ps1 logs user-auth-service` | `docker compose logs -f user-auth-service` |
+| Reset volumes | `./manage.ps1 reset` | `docker compose down -v` |
+| Help/usage | `./manage.ps1 help` | — |
+| Generate JWT secret | `./manage.ps1 jwt-secret` | — |
+
+> Linux/macOS users can execute the same script via `pwsh ./manage.ps1 <command>` or translate commands to shell aliases.
+
+---
+
+## 🔄 Enabling Additional Microservices
+
+1. Build or pull the service image (e.g., `docker build -t spinlock-device-telemetry ../DeviceTelemetry`).
+2. Uncomment the relevant service block in `docker-compose.yml`.
+3. Provide the service-specific environment variables in `.env` or a dedicated `env_file`.
+4. Run `./manage.ps1 restart` to recreate containers with the new components.
+
+Consider staging them one at a time and monitoring logs to ensure Kafka topics, databases, and MQTT channels align with expectations.
+
+---
+
+## 🧑‍💻 Development Tips
+
+- **Hot reload**: The dev overlay mounts local source directories into containers where supported. Ensure Python containers run with `--reload` or equivalent.
+- **Debugging**: Attach shells using `docker exec -it <service> /bin/sh` (or `/bin/bash`). Use `ping`, `curl`, and `nc` to validate service-to-service reachability.
+- **Testing locally developed services**: Rebuild frequently (`./manage.ps1 build <service>` variant if you add one) and restart only the impacted containers with `docker compose up -d <service>`.
+- **Database fixtures**: If using the dev Postgres instance, expose migrations/seed scripts through mounted volumes or `docker exec` commands.
+
+---
+
+## 🩺 Troubleshooting
+
+| Symptom | Possible Cause | Resolution |
+|---------|----------------|------------|
+| `port already allocated` | Host port conflict | Stop conflicting process (`Get-Process -Id (Get-NetTCPConnection -LocalPort 80).OwningProcess`) or change exposed port in `.env`.
+| `JWT verification failed` | Secrets mismatch | Regenerate via `./manage.ps1 jwt-secret` and update every consumer + `service_account.env`.
+| `Gateway returns 502` | Downstream service unhealthy | Inspect container logs, ensure internal DNS name matches `nginx.conf` upstream block.
+| Kafka UI blank | Broker not reachable | Verify Kafka is running (`docker compose ps kafka`), check `KAFKA_BROKER_ID`/listeners.
+| MQTT clients can’t connect | Missing TLS/WS config | Confirm Nginx `/mqtt/` location, ensure correct protocol (`mqtt://` vs `wss://`).
+
+Health probes cheat sheet:
 ```powershell
-# Access service logs
-docker logs user-auth-service
-
-# Execute commands inside containers
-docker exec -it user-auth-service /bin/bash
-
-# Check internal network connectivity
-docker exec -it api-gateway ping user-auth-service
+Invoke-RestMethod -Uri "http://localhost/status" -Method GET         # API Gateway status
+Invoke-RestMethod -Uri "http://localhost:8080/health" -Method GET    # Nginx health
+docker exec api-gateway curl -sf http://user-auth-service:8000/health
 ```
 
-### Logs
+---
 
-View logs for debugging:
-```powershell
-# All services
-.\manage.ps1 logs
+## 🤝 Contributing & Next Steps
 
-# Specific service
-.\manage.ps1 logs user-auth-service
+1. Spin up the stack (`./manage.ps1 start-dev`) and validate new features against real infrastructure.
+2. Keep documentation in sync—update this README when enabling new services or changing network contracts.
+3. Add unit/integration tests in their respective service repos; wire them into CI/CD before publishing new images.
+4. Roadmap ideas:
+   - Automate certificate provisioning (Let’s Encrypt / mkcert) via `manage.ps1` subcommand.
+   - Add Grafana + Prometheus in dev overlay for richer observability.
+   - Wire `Logging` microservice to Loki/S3 for long-term retention.
 
-# Follow logs in real-time
-.\manage.ps1 logs api-gateway
-```
+---
 
-## Building Custom Images
+## 📄 License
 
-For services not available on Docker Hub, you'll need to build them locally:
-
-```bash
-# Example for building a service
-cd ../UserAuthenticationMicroservice
-docker build -t user-auth-microservice:latest .
-
-# Update the image tag in docker-compose.yml if needed
-```
-
-## Security Notes
-
-## Security Notes
-
-### Current Configuration
-- **Nginx Gateway (Ports 80, 443, 8080)**: ✅ Secure reverse proxy entry point
-- **Kafka UI (Port 8001)**: ⚠️ Direct access for monitoring - consider internal-only in production
-- **All other services**: ✅ Internal only - secure
-
-### Production Security Best Practices
-
-1. **Remove Kafka UI external access**:
-   ```yaml
-   # Comment out in docker-compose.yml to make Kafka UI internal-only
-   # ports:
-   #   - "8001:8080"
-   ```
-
-2. **Use strong JWT secrets**:
-   ```powershell
-   .\manage.ps1 jwt-secret
-   ```
-
-3. **Configure HTTPS**: Use reverse proxy (nginx, traefik) with SSL certificates
-
-4. **Environment Variables**: Never commit secrets to version control
-
-5. **Network Security**: Use proper firewall rules and VPC configuration
-
-6. **Monitoring**: Implement proper logging and monitoring solutions
-
-### Default Configuration Warning
-⚠️ **This configuration is optimized for development and local testing. For production deployment, additional security measures are required.**
-
-## Quick Reference
-
-### 🚀 **Start Everything**
-```powershell
-.\manage.ps1 start
-```
-
-### 🔍 **Check Status**
-```powershell
-.\manage.ps1 status
-```
-
-### 🧪 **Test All Services**
-```powershell
-.\manage.ps1 test
-```
-
-### 🌐 **Access Points**
-- **Main API**: http://localhost or https://localhost
-- **Kafka UI**: http://localhost:8001
-- **Nginx Health**: http://localhost:8080/health
-
-### 📊 **Monitor Services**
-```powershell
-.\manage.ps1 logs               # All services
-.\manage.ps1 logs kafka-ui      # Specific service
-docker-compose ps               # Quick status
-```
-
-## Contributing
-
-1. Test changes locally first
-2. Update documentation if needed
-3. Ensure all services start successfully
-4. Check health endpoints work correctly
-
-## License
-
-This configuration is part of the Smart Parking System microservices architecture.
+The SpinLock orchestration is part of the **CO330 Smart Parking** project. License terms follow the root repository’s policy; ensure compliance before reuse in other contexts.
