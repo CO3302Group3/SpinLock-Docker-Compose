@@ -58,8 +58,8 @@ services:
   admin-management:
     image: rav2001h/admin-management:latest
     container_name: admin-management-microservice
-    # ports:
-    #   - "8005:8000"  # Removed external port exposure - only accessible through API Gateway
+    ports:
+      - "8002:8000"  # Removed external port exposure - only accessible through API Gateway
     environment:
       - USER_AUTH_SERVICE_URL=${USER_AUTH_SERVICE_URL:-http://user-auth-service:8000}
       - DEVICE_ONBOARDING_SERVICE_URL=${DEVICE_ONBOARDING_SERVICE_URL:-http://device-onboarding:8000}
@@ -82,8 +82,8 @@ services:
   user-auth-service:
     image: rav2001h/user-auth-microservice:latest
     container_name: user-auth-microservice
-    # ports:
-    #   - "8001:8000"  # Removed external port exposure - only accessible through API Gateway
+    ports:
+      - "8003:8000"  # Removed external port exposure - only accessible through API Gateway
     environment:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
@@ -511,6 +511,25 @@ services:
       - microservices-network
     restart: unless-stopped
 
+  redis:
+    image: redis:7
+    container_name: redis
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    volumes:
+      - redis-data:/data                # persistence
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro   # optional custom config
+    ports:
+      - "6379:6379"
+    networks:
+      - microservices-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
 # Networks
 networks:
   microservices-network:
@@ -540,4 +559,6 @@ volumes:
   mongo_express_data:
     driver: local
   mysql_data:
+    driver: local
+  redis-data:
     driver: local
