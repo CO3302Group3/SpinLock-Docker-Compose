@@ -237,7 +237,7 @@ services:
     environment:
       - MQTT_BROKER_HOST=mqtt-broker
       - MQTT_BROKER_PORT=1883
-      - MQTT_TOPIC=bike/health
+      - MQTT_TOPIC=bike/status
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - MONGO_DB=mongodb://mongo:27017
       - MONGO_USERNAME=root
