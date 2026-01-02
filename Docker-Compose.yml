@@ -37,6 +37,7 @@ services:
       - DEVICE_NOTIFICATION_SERVICE_URL=${DEVICE_NOTIFICATION_SERVICE_URL:-http://device-notification:8000}
       - DEVICE_ONBOARDING_SERVICE_URL=${DEVICE_ONBOARDING_SERVICE_URL:-http://device-onboarding:8000}
       - ADMIN_MANAGEMENT_SERVICE_URL=${ADMIN_MANAGEMENT_SERVICE_URL:-http://admin-management:8000}
+      - PARKING_SLOT_SERVICE_URL=${PARKING_SLOT_SERVICE_URL:-http://parking-slot:8000}
       - GATEWAY_PORT=${GATEWAY_PORT:-8000}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
@@ -45,6 +46,7 @@ services:
       - device-health
       - event-processing
       - device-notification
+      - parking-slot
     networks:
       - microservices-network
     restart: unless-stopped
@@ -214,6 +216,7 @@ services:
       - MQTT_TOPIC=bike/telemetry
       - USER_AUTH_SERVICE_URL=${USER_AUTH_SERVICE_URL:-http://user-auth-service:8000}
       - DEVICE_ONBOARDING_SERVICE_URL=${DEVICE_ONBOARDING_SERVICE_URL:-http://device-onboarding:8000}
+      - HEALTH_MONITORING_SERVICE_URL=${HEALTH_MONITORING_SERVICE_URL:-http://device-health:8000}
     depends_on:
       - mqtt-broker
       - kafka
@@ -221,6 +224,7 @@ services:
       - device-onboarding
       - mongo
       - mongo-express
+      - device-health
     networks:
       - microservices-network
     restart: unless-stopped
@@ -242,6 +246,7 @@ services:
       - MONGO_DB=mongodb://mongo:27017
       - MONGO_USERNAME=root
       - MONGO_PASSWORD=example
+      - TZ=Asia/Colombo
     depends_on:
       - mqtt-broker
       - kafka
@@ -257,6 +262,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
 
   device-notification:
     image: rav2001h/device-notifications:latest
